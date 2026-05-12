@@ -4,14 +4,10 @@ go 1.25.1
 
 require (
 	github.com/golang/geo v0.0.0-20230421003525-6adc56603217
-	github.com/viam-labs/viamkit v0.0.0-00010101000000-000000000000
+	github.com/viam-labs/viamkit v0.1.0
 	go.viam.com/api v0.1.496
 	go.viam.com/rdk v0.105.0
 )
-
-// Local-path replace while viamkit is unpublished. Drop once
-// the repo is pushed and tagged.
-replace github.com/viam-labs/viamkit => /home/shrews/viam/viamkit
 
 require (
 	cloud.google.com/go v0.115.1 // indirect
