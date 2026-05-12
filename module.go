@@ -26,6 +26,8 @@ import (
 	commonpb "go.viam.com/api/common/v1"
 	wsspb "go.viam.com/api/service/worldstatestore/v1"
 	"github.com/golang/geo/r3"
+	wcsh "github.com/viam-labs/viamkit/geom"
+	"github.com/viam-labs/viamkit/contracts"
 	"go.viam.com/rdk/components/generic"
 	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/resource"
@@ -138,18 +140,11 @@ type Config struct {
 	ObserverFrame string `json:"observer_frame,omitempty"`
 }
 
-// Pose6D is a 6-DOF pose using the Viam OrientationVectorDegrees convention.
-// Units are mm and degrees. Only the orientation fields of PlaceOrientation
-// are consumed — position is always taken from the computed slot.
-type Pose6D struct {
-	X     float64 `json:"x"`
-	Y     float64 `json:"y"`
-	Z     float64 `json:"z"`
-	OX    float64 `json:"o_x"`
-	OY    float64 `json:"o_y"`
-	OZ    float64 `json:"o_z"`
-	Theta float64 `json:"theta"`
-}
+// Pose6D is re-exported from github.com/viam-labs/viamkit/geom so all
+// workcell modules share the same JSON shape. Only the orientation fields
+// of PlaceOrientation are consumed — position is always taken from the
+// computed slot.
+type Pose6D = wcsh.Pose6D
 
 // cursor tracks which seq to place next and records outcomes. It lives in
 // RAM and resets on reconfigure (AlwaysRebuild); reset_cursor is the only
@@ -656,40 +651,40 @@ var cmdHandlers = []struct {
 			"pallet_home_world": pose6DToMap(world),
 		}, nil
 	}},
-	{"get_box_dims", func(p *palletSequencer, _ map[string]interface{}) (map[string]interface{}, error) {
+	{contracts.VerbGetBoxDims, func(p *palletSequencer, _ map[string]interface{}) (map[string]interface{}, error) {
 		// Single source of truth for box dimensions. The palletizer
 		// pulls these at construction so it doesn't carry duplicate
 		// box_length/width/height_mm fields that can drift.
 		c := p.snapshot()
-		return map[string]interface{}{
-			"box_length_mm": c.BoxLengthMM,
-			"box_width_mm":  c.BoxWidthMM,
-			"box_height_mm": c.BoxHeightMM,
-		}, nil
+		return contracts.ToMap(contracts.GetBoxDimsResponse{
+			BoxLengthMM: c.BoxLengthMM,
+			BoxWidthMM:  c.BoxWidthMM,
+			BoxHeightMM: c.BoxHeightMM,
+		})
 	}},
-	{"get_pack_order", func(p *palletSequencer, _ map[string]interface{}) (map[string]interface{}, error) {
+	{contracts.VerbGetPackOrder, func(p *palletSequencer, _ map[string]interface{}) (map[string]interface{}, error) {
 		return p.doGetPackOrder(), nil
 	}},
-	{"next_box", func(p *palletSequencer, _ map[string]interface{}) (map[string]interface{}, error) {
+	{contracts.VerbNextBox, func(p *palletSequencer, _ map[string]interface{}) (map[string]interface{}, error) {
 		return p.doNextBox()
 	}},
-	{"report_placement", func(p *palletSequencer, cmd map[string]interface{}) (map[string]interface{}, error) {
-		return p.doReportPlacement(cmd["report_placement"])
+	{contracts.VerbReportPlacement, func(p *palletSequencer, cmd map[string]interface{}) (map[string]interface{}, error) {
+		return p.doReportPlacement(cmd[contracts.VerbReportPlacement])
 	}},
-	{"skip_box", func(p *palletSequencer, cmd map[string]interface{}) (map[string]interface{}, error) {
-		return p.doSkipBox(cmd["skip_box"])
+	{contracts.VerbSkipBox, func(p *palletSequencer, cmd map[string]interface{}) (map[string]interface{}, error) {
+		return p.doSkipBox(cmd[contracts.VerbSkipBox])
 	}},
-	{"reset_cursor", func(p *palletSequencer, _ map[string]interface{}) (map[string]interface{}, error) {
+	{contracts.VerbResetCursor, func(p *palletSequencer, _ map[string]interface{}) (map[string]interface{}, error) {
 		return p.doResetCursor()
 	}},
-	{"get_progress", func(p *palletSequencer, _ map[string]interface{}) (map[string]interface{}, error) {
+	{contracts.VerbGetProgress, func(p *palletSequencer, _ map[string]interface{}) (map[string]interface{}, error) {
 		return p.doGetProgress(), nil
 	}},
-	{"set_box_transform", func(p *palletSequencer, cmd map[string]interface{}) (map[string]interface{}, error) {
-		return p.doSetBoxTransform(cmd["set_box_transform"])
+	{contracts.VerbSetBoxTransform, func(p *palletSequencer, cmd map[string]interface{}) (map[string]interface{}, error) {
+		return p.doSetBoxTransform(cmd[contracts.VerbSetBoxTransform])
 	}},
-	{"clear_box_transform", func(p *palletSequencer, cmd map[string]interface{}) (map[string]interface{}, error) {
-		return p.doClearBoxTransform(cmd["clear_box_transform"])
+	{contracts.VerbClearBoxTransform, func(p *palletSequencer, cmd map[string]interface{}) (map[string]interface{}, error) {
+		return p.doClearBoxTransform(cmd[contracts.VerbClearBoxTransform])
 	}},
 }
 
@@ -1035,14 +1030,14 @@ func (p *palletSequencer) doNextBox() (map[string]interface{}, error) {
 	remaining := total - placed - skipped
 
 	if next == nil {
-		return map[string]interface{}{
-			"is_complete": true,
-			"total":       total,
-			"placed":      placed,
-			"failed":      failed,
-			"skipped":     skipped,
-			"remaining":   remaining,
-		}, nil
+		return contracts.ToMap(contracts.NextBoxResponse{
+			IsComplete: true,
+			Total:      total,
+			Placed:     placed,
+			Failed:     failed,
+			Skipped:    skipped,
+			Remaining:  remaining,
+		})
 	}
 
 	// Place orientation derives from pallet_home when set — pallet_home
@@ -1093,39 +1088,28 @@ func (p *palletSequencer) doNextBox() (map[string]interface{}, error) {
 	endWorld := poseToPose6D(spatialmath.Compose(p.palletPose, endLocal))
 	startWorld := poseToPose6D(spatialmath.Compose(p.palletPose, startLocal))
 
-	return map[string]interface{}{
-		"seq":   next.Seq,
-		"col":   next.Col,
-		"row":   next.Row,
-		"layer": next.Layer,
-		"pose_in_pallet": map[string]interface{}{
-			"x":     next.XMM,
-			"y":     next.YMM,
-			"z":     next.ZMM,
-			"o_x":   ori.OX,
-			"o_y":   ori.OY,
-			"o_z":   ori.OZ,
-			"theta": ori.Theta,
+	return contracts.ToMap(contracts.NextBoxResponse{
+		Seq:   next.Seq,
+		Col:   next.Col,
+		Row:   next.Row,
+		Layer: next.Layer,
+		PoseInPallet: wcsh.Pose6D{
+			X: next.XMM, Y: next.YMM, Z: next.ZMM,
+			OX: ori.OX, OY: ori.OY, OZ: ori.OZ, Theta: ori.Theta,
 		},
-		"approach_offset_in_pallet": map[string]interface{}{
-			"x": offsetX,
-			"y": offsetY,
-			"z": height,
+		ApproachOffsetInPallet: wcsh.Vec3D{X: offsetX, Y: offsetY, Z: height},
+		PlaceEndInWorld:        endWorld,
+		PlaceStartInWorld:      startWorld,
+		BoxDimensionsMM: contracts.BoxDimensions{
+			Width: next.Width, Length: next.Length, Height: next.Height,
 		},
-		"place_end_in_world":   pose6DToMap(endWorld),
-		"place_start_in_world": pose6DToMap(startWorld),
-		"box_dimensions_mm": map[string]interface{}{
-			"width":  next.Width,
-			"length": next.Length,
-			"height": next.Height,
-		},
-		"is_complete": false,
-		"total":       total,
-		"placed":      placed,
-		"failed":      failed,
-		"skipped":     skipped,
-		"remaining":   remaining,
-	}, nil
+		IsComplete: false,
+		Total:      total,
+		Placed:     placed,
+		Failed:     failed,
+		Skipped:    skipped,
+		Remaining:  remaining,
+	})
 }
 
 // doReportPlacement records the palletizer's outcome for a seq. success
@@ -1133,17 +1117,20 @@ func (p *palletSequencer) doNextBox() (map[string]interface{}, error) {
 // leaves the cursor put so next_box returns the same seq for retry; the
 // error message is stored for later inspection.
 func (p *palletSequencer) doReportPlacement(raw interface{}) (map[string]interface{}, error) {
-	args, ok := raw.(map[string]interface{})
+	argsMap, ok := raw.(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("report_placement: expected object, got %T", raw)
 	}
-	seqF, ok := args["seq"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("report_placement: missing or non-numeric 'seq'")
+	args, err := contracts.FromMap[contracts.ReportPlacementArgs](argsMap)
+	if err != nil {
+		return nil, fmt.Errorf("report_placement: invalid args: %w", err)
 	}
-	seq := int(seqF)
-	success, _ := args["success"].(bool)
-	errMsg, _ := args["error"].(string)
+	if _, hasSeq := argsMap["seq"]; !hasSeq {
+		return nil, fmt.Errorf("report_placement: missing 'seq'")
+	}
+	seq := args.Seq
+	success := args.Success
+	errMsg := args.Error
 
 	p.mu.Lock()
 	var pendingEmits []worldstatestore.TransformChange
@@ -1201,16 +1188,16 @@ func (p *palletSequencer) doReportPlacement(raw interface{}) (map[string]interfa
 	remaining := total - placed - skipped
 	complete := remaining == 0 && total > 0
 
-	return map[string]interface{}{
-		"acknowledged": true,
-		"next_seq":     p.cursor.next,
-		"placed":       placed,
-		"failed":       failed,
-		"skipped":      skipped,
-		"remaining":    remaining,
-		"complete":     complete,
-		"last_error":   errMsg,
-	}, nil
+	return contracts.ToMap(contracts.ReportPlacementResponse{
+		Acknowledged: true,
+		NextSeq:      p.cursor.next,
+		Placed:       placed,
+		Failed:       failed,
+		Skipped:      skipped,
+		Remaining:    remaining,
+		Complete:     complete,
+		LastError:    errMsg,
+	})
 }
 
 // doSkipBox marks a seq as skipped (not counted toward placed, but also not
@@ -1356,21 +1343,10 @@ func (p *palletSequencer) palletHomeLocalAndWorld(c Config) (Pose6D, Pose6D) {
 	return local, world
 }
 
-func pose6DToMap(p Pose6D) map[string]interface{} {
-	return map[string]interface{}{
-		"x": p.X, "y": p.Y, "z": p.Z,
-		"o_x": p.OX, "o_y": p.OY, "o_z": p.OZ, "theta": p.Theta,
-	}
-}
-
-func poseToPose6D(pose spatialmath.Pose) Pose6D {
-	pt := pose.Point()
-	ov := pose.Orientation().OrientationVectorDegrees()
-	return Pose6D{
-		X: pt.X, Y: pt.Y, Z: pt.Z,
-		OX: ov.OX, OY: ov.OY, OZ: ov.OZ, Theta: ov.Theta,
-	}
-}
+// Thin wrappers around the shared package. Kept as locally-named
+// shorthands so call sites stay terse.
+func pose6DToMap(p Pose6D) map[string]interface{} { return p.ToMap() }
+func poseToPose6D(pose spatialmath.Pose) Pose6D   { return wcsh.PoseFrom(pose) }
 
 func keysOf(m map[string]interface{}) []string {
 	ks := make([]string, 0, len(m))

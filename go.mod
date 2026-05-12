@@ -4,9 +4,14 @@ go 1.25.1
 
 require (
 	github.com/golang/geo v0.0.0-20230421003525-6adc56603217
+	github.com/viam-labs/viamkit v0.0.0-00010101000000-000000000000
 	go.viam.com/api v0.1.496
 	go.viam.com/rdk v0.105.0
 )
+
+// Local-path replace while viamkit is unpublished. Drop once
+// the repo is pushed and tagged.
+replace github.com/viam-labs/viamkit => /home/shrews/viam/viamkit
 
 require (
 	cloud.google.com/go v0.115.1 // indirect
@@ -27,6 +32,7 @@ require (
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/bluenviron/gortsplib/v4 v4.8.0 // indirect
 	github.com/bufbuild/protocompile v0.9.0 // indirect
+	github.com/bytedance/sonic/loader v0.5.1 // indirect
 	github.com/campoy/embedmd v1.0.0 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
@@ -34,7 +40,6 @@ require (
 	github.com/chewxy/hm v1.0.0 // indirect
 	github.com/chewxy/math32 v1.0.8 // indirect
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
-	github.com/cloudwego/base64x v0.1.7 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
@@ -75,7 +80,6 @@ require (
 	github.com/jhump/protoreflect v1.15.6 // indirect
 	github.com/kellydunn/golang-geo v0.7.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kylelemons/go-gypsy v1.0.0 // indirect
 	github.com/lestrrat-go/backoff/v2 v2.0.8 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.2 // indirect
@@ -116,7 +120,6 @@ require (
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/srikrsna/protoc-gen-gotag v0.6.2 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
-	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/viamrobotics/ice/v2 v2.3.40 // indirect
 	github.com/viamrobotics/webrtc/v3 v3.99.16 // indirect
 	github.com/viamrobotics/zeroconf v1.0.13 // indirect
@@ -147,7 +150,6 @@ require (
 	go.viam.com/test v1.2.4 // indirect
 	go.viam.com/utils v0.4.0 // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20230525183740-e7c30c78aeb2 // indirect
-	golang.org/x/arch v0.27.0 // indirect
 	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c // indirect
 	golang.org/x/image v0.25.0 // indirect
