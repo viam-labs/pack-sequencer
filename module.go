@@ -27,6 +27,7 @@ import (
 	wsspb "go.viam.com/api/service/worldstatestore/v1"
 	"github.com/golang/geo/r3"
 	wcsh "github.com/viam-labs/viamkit/geom"
+	"github.com/viam-labs/viamkit/viz"
 	"go.viam.com/rdk/components/generic"
 	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/resource"
@@ -866,29 +867,15 @@ func (p *palletSequencer) doSetBoxTransform(raw interface{}) (map[string]interfa
 	version := p.dynamicVersion[seq]
 	prev := p.dynamicBoxes[seq]
 	uuid := fmt.Sprintf("box-%d-v%d", seq, version)
-	tf := &commonpb.Transform{
-		Uuid:           []byte(uuid),
-		ReferenceFrame: uuid,
-		PoseInObserverFrame: &commonpb.PoseInFrame{
-			ReferenceFrame: parent,
-			Pose: &commonpb.Pose{
-				X: x, Y: y, Z: z,
-				OX: ox, OY: oy, OZ: oz, Theta: theta,
-			},
-		},
-		PhysicalObject: &commonpb.Geometry{
-			GeometryType: &commonpb.Geometry_Box{
-				Box: &commonpb.RectangularPrism{
-					DimsMm: &commonpb.Vector3{
-						X: p.cfg.BoxWidthMM,
-						Y: p.cfg.BoxLengthMM,
-						Z: p.cfg.BoxHeightMM,
-					},
-				},
-			},
-			Label: uuid,
-		},
-	}
+	tf := viz.Box{
+		UUID:          uuid,
+		ObserverFrame: parent,
+		Pose: spatialmath.NewPose(
+			r3.Vector{X: x, Y: y, Z: z},
+			&spatialmath.OrientationVectorDegrees{OX: ox, OY: oy, OZ: oz, Theta: theta},
+		),
+		DimsMM: r3.Vector{X: p.cfg.BoxWidthMM, Y: p.cfg.BoxLengthMM, Z: p.cfg.BoxHeightMM},
+	}.ToTransform()
 	p.dynamicBoxes[seq] = tf
 	p.mu.Unlock()
 
@@ -1450,36 +1437,12 @@ func (p *palletSequencer) buildTransformForSeqLocked(seq int) *commonpb.Transfor
 		X: placement.XMM, Y: placement.YMM, Z: placement.ZMM - placement.Height/2,
 	})
 	uuid := fmt.Sprintf("box-%d", seq)
-	return &commonpb.Transform{
-		Uuid:           []byte(uuid),
-		ReferenceFrame: uuid,
-		PoseInObserverFrame: &commonpb.PoseInFrame{
-			ReferenceFrame: p.observerFrame,
-			Pose:           p.worldPose(centerInPallet),
-		},
-		PhysicalObject: &commonpb.Geometry{
-			GeometryType: &commonpb.Geometry_Box{
-				Box: &commonpb.RectangularPrism{
-					DimsMm: &commonpb.Vector3{X: placement.Width, Y: placement.Length, Z: placement.Height},
-				},
-			},
-			Label: uuid,
-		},
-	}
-}
-
-// worldPose composes a pallet-local pose with the bound pallet
-// component's world pose, returning a protobuf Pose in world space.
-// p.palletPose is set at construction from the pallet's frame; an
-// AlwaysRebuild cascade refreshes it when the pallet's frame changes.
-func (p *palletSequencer) worldPose(inPallet spatialmath.Pose) *commonpb.Pose {
-	world := spatialmath.Compose(p.palletPose, inPallet)
-	pt := world.Point()
-	ov := world.Orientation().OrientationVectorDegrees()
-	return &commonpb.Pose{
-		X: pt.X, Y: pt.Y, Z: pt.Z,
-		OX: ov.OX, OY: ov.OY, OZ: ov.OZ, Theta: ov.Theta,
-	}
+	return viz.Box{
+		UUID:          uuid,
+		ObserverFrame: p.observerFrame,
+		Pose:          spatialmath.Compose(p.palletPose, centerInPallet),
+		DimsMM:        r3.Vector{X: placement.Width, Y: placement.Length, Z: placement.Height},
+	}.ToTransform()
 }
 
 // emit drops events rather than blocking the caller — the channel is
