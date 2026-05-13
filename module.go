@@ -111,9 +111,7 @@ type Config struct {
 	Label    string `json:"label,omitempty"`
 
 	// Place approach parameters — consumed by next_box when it builds the
-	// per-box approach_offset. Defaults mirror the palletizer module's own
-	// defaults so swapping it in behaves the same as the legacy self-computed
-	// poses.
+	// per-box approach_offset.
 	// PlaceApproachAngleDeg tilts the approach along the pallet's +X axis
 	// (default 15°). The gripper descends from height down to the slot,
 	// offset horizontally by height·tan(angle).
@@ -760,9 +758,7 @@ func (p *palletSequencer) doGetPackOrder() map[string]interface{} {
 				"theta": ori.Theta,
 			},
 			// Pre-composed world-frame pose so consumers don't need to
-			// know pallet_origin themselves. Single source of truth —
-			// eliminates the duplicated pallet_origin field the
-			// palletizer used to carry.
+			// know pallet_origin themselves.
 			"pose_in_world": pose6DToMap(worldPose),
 			"approach_offset_in_pallet": map[string]interface{}{
 				"x": offsetX,
@@ -1264,9 +1260,8 @@ func (p *palletSequencer) attrsResponse(c Config) map[string]interface{} {
 // the palletizer should use at place_start and place_end. Pallet_home is
 // the canonical source — using its orientation guarantees place_start/end
 // share the same world yaw as pallet_home, so the wrist doesn't spin
-// during the place. Place_orientation is kept as a fallback for older
-// configs that haven't migrated to pallet_home; default is gripper
-// straight down.
+// during the place. PlaceOrientation is a fallback for configs without
+// pallet_home; default is gripper straight down.
 func placeOrientation(c Config) Pose6D {
 	if c.PalletHome != nil {
 		out := Pose6D{
