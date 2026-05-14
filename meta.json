@@ -1,7 +1,7 @@
 {
   "$schema": "https://dl.viam.dev/module.schema.json",
   "module_id": "viam:pack-sequencer",
-  "visibility": "public_unlisted",
+  "visibility": "public",
   "url": "https://github.com/viam-labs/pack-sequencer",
   "description": "Worldstatestore service that owns pack-order math, the placement cursor, the placed-set, and a live WorldStateStore stream of placed-box transforms for palletizing workcells.",
   "models": [
