@@ -143,3 +143,49 @@ func TestOrientationForPlacementRotated(t *testing.T) {
 		t.Errorf("rotated theta: got %v, want 90", ori.Theta)
 	}
 }
+
+func TestRejectUnknownAttributes(t *testing.T) {
+	// Canonical key — accepted.
+	if err := rejectUnknownAttributes(map[string]interface{}{
+		"box_width_mm": 100.0,
+	}); err != nil {
+		t.Errorf("canonical key rejected: %v", err)
+	}
+	// Typo (no _mm suffix) — rejected. This is the exact case the
+	// dryrun hit silently before the strict check landed.
+	if err := rejectUnknownAttributes(map[string]interface{}{
+		"box_width": 100.0,
+	}); err == nil {
+		t.Errorf("typo'd key 'box_width' should have been rejected, got nil")
+	}
+	// Nested-object shape (matches next_box response) — rejected as
+	// unknown. Another exact dryrun bug.
+	if err := rejectUnknownAttributes(map[string]interface{}{
+		"box_dimensions_mm": map[string]interface{}{"width": 100, "length": 200},
+	}); err == nil {
+		t.Errorf("'box_dimensions_mm' nested shape should have been rejected, got nil")
+	}
+}
+
+func TestVizColorDefaultIsCardboardBrown(t *testing.T) {
+	p := &palletSequencer{cfg: Config{}}
+	c := p.vizColor()
+	if c.R != 176 || c.G != 136 || c.B != 80 {
+		t.Errorf("default box color: got (%d,%d,%d), want cardboard brown (176,136,80)",
+			c.R, c.G, c.B)
+	}
+	if math.Abs(c.Opacity-1) > eps {
+		t.Errorf("default opacity: got %v, want 1", c.Opacity)
+	}
+}
+
+func TestVizColorConfigOverride(t *testing.T) {
+	p := &palletSequencer{cfg: Config{
+		BoxColor: &BoxColor{R: 10, G: 20, B: 30, Opacity: 0.5},
+	}}
+	c := p.vizColor()
+	if c.R != 10 || c.G != 20 || c.B != 30 || math.Abs(c.Opacity-0.5) > eps {
+		t.Errorf("override: got (%d,%d,%d,opacity=%v), want (10,20,30,0.5)",
+			c.R, c.G, c.B, c.Opacity)
+	}
+}

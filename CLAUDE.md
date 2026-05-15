@@ -21,7 +21,7 @@ This is one of the four sibling modules in the workcell ecosystem.
 
 ## Dependency on workcell-components
 
-At construction, pack-sequencer reads the pallet's pose and dimensions via DoCommand to `viam:workcell-components:pallet`. That handshake happens once; AlwaysRebuild cascades on frame edits.
+Pack-sequencer reads the pallet's pose and dimensions via DoCommand to `viam:workcell-components:pallet` on **every** pack-order computation — there is no cache. workcell-components 0.2.0+ supports live `set_dimensions` / `set_color` DoCommand mutation, and pack-sequencer was caching at construction, so dim updates required bouncing pack-sequencer (dryrun pain point). Live-fetching costs ~1ms per call (in-process gRPC over UNIX socket) and is a wash next to the actual pack-order arithmetic.
 
 This is intentional rather than reading the frame system directly — DoCommand gives a stable contract independent of frame-system internals. See README for the rationale.
 
@@ -46,6 +46,9 @@ Typed Go structs for `next_box`, `report_placement`, and `get_box_dims` live in 
 
 - **Cursor survives reconfigure.** A pallet edit (box dimensions, layer count) cascades through AlwaysRebuild but the cursor preserves through. Only `reset_cursor` (or a Config that invalidates the pack order) clears it.
 - **Pack-order math is recomputed per call, not cached.** `packColumn` / `packInterlock` are pure functions of Config + pallet dims. Cheap (<1ms for 100-box pallets) and avoids cache-invalidation bugs.
+- **Pallet pose + dims are live-fetched per call, not cached.** Lets operators update pallet `set_dimensions` / drag the pallet without a pack-sequencer bounce. `palletInfo()` does the DoCommand; callers MUST invoke it before locking p.mu (the DoCommand round-trips through gRPC and can't hold our mutex). See doNextBox / doReportPlacement / GetTransform call patterns.
+- **Strict attribute validation at construction.** `rejectUnknownAttributes` round-trips the raw attribute map through `json.DisallowUnknownFields` so typos like `box_width` (vs `box_width_mm`) error at config-load instead of silently becoming 0 and reporting `is_complete=true` on cycle 1.
+- **Default box color is cardboard brown** (`#b08850`, see `defaultBoxColor`). The WSS renderer's default is red — without the default, placed boxes and in-flight box transforms render red. Override via `box_color: {r, g, b, opacity?}` in Config.
 - **Inline emit of WorldStateStore changes.** `set_box_transform` / `clear_box_transform` / `report_placement` push to a buffered `changeChan` so the 3D scene reflects state immediately. Buffer cap 128; overflow logs at warn.
 
 ## Dependencies
@@ -85,4 +88,4 @@ Bump `VERSION` first.
 
 - GitHub: [`viam-labs/pack-sequencer`](https://github.com/viam-labs/pack-sequencer)
 - Registry: `viam:pack-sequencer`
-- Latest published: `0.1.1-rc1`
+- Latest published: `0.2.0` (live pallet-dim fetch + strict config validation + cardboard-brown box default)

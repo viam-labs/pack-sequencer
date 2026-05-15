@@ -136,6 +136,39 @@ type Config struct {
 	// ObserverFrame is the parent frame for emitted world-state-store
 	// transforms. Defaults to "world".
 	ObserverFrame string `json:"observer_frame,omitempty"`
+
+	// BoxColor is the optional rendering color for placed-box and
+	// in-flight-box WorldStateStore transforms. Defaults to cardboard
+	// brown (≈ #b08850, see defaultBoxColor) when unset so boxes in
+	// the 3D scene look like cardboard rather than the renderer's
+	// default red. RGB 0..255, opacity 0..1.
+	BoxColor *BoxColor `json:"box_color,omitempty"`
+}
+
+// BoxColor is the JSON shape for the box_color config attribute. Kept
+// local rather than importing viamkit/viz.Color so the wire format is
+// stable even if viz internals shift.
+type BoxColor struct {
+	R       int     `json:"r"`
+	G       int     `json:"g"`
+	B       int     `json:"b"`
+	Opacity float64 `json:"opacity,omitempty"`
+}
+
+// defaultBoxColor is cardboard brown (≈ #b08850). Applied when the
+// config doesn't set box_color, so freshly-added pack-sequencer
+// configurations render boxes as cardboard out of the box without
+// every operator having to type a color.
+var defaultBoxColor = BoxColor{R: 176, G: 136, B: 80, Opacity: 1}
+
+// vizColor projects the configured (or default) BoxColor into the
+// viz.Color shape that viamkit's Transform builders accept.
+func (p *palletSequencer) vizColor() viz.Color {
+	c := defaultBoxColor
+	if p.cfg.BoxColor != nil {
+		c = *p.cfg.BoxColor
+	}
+	return viz.Color{R: c.R, G: c.G, B: c.B, Opacity: c.Opacity}
 }
 
 // Pose6D is re-exported from github.com/viam-labs/viamkit/geom so all
@@ -198,18 +231,18 @@ type palletSequencer struct {
 	cursor cursor
 
 	// pallet is the sibling pallet component (when cfg.Pallet is set).
-	// Source of truth for pallet pose and L/W/thickness. Resolved once
-	// at construction; AlwaysRebuild on the dependency cascades so a
-	// frame edit on the pallet (drag-and-save in the 3D viewer) rebuilds
-	// this service with refreshed values.
+	// Source of truth for pallet pose and L/W/thickness. The resource
+	// handle is stable across pallet `set_dimensions` / `set_color`
+	// DoCommand calls because those mutate in-memory state; the handle
+	// rebuilds only on a real pallet reconfigure (drag-and-save edits
+	// the frame block and AlwaysRebuild cascades).
+	//
+	// Dimensions and pose are NOT cached: every call that needs them
+	// re-queries the pallet component via DoCommand. That makes live
+	// `set_dimensions` updates on the pallet visible to the next
+	// `next_box` / `get_pack_order` without operators having to bounce
+	// pack-sequencer. ~1ms per call in-process — acceptable.
 	pallet resource.Resource
-
-	// Cached pallet info — set at construction. Avoids per-call DoCommand
-	// overhead and handles the no-pallet fallback uniformly.
-	palletPose        spatialmath.Pose
-	palletWidthMM     float64
-	palletLengthMM    float64
-	palletThicknessMM float64
 
 	// World-state-store surface. observerFrame defaults to "world" when
 	// unset. changeChan delivers ADDED/REMOVED events to any
@@ -247,61 +280,74 @@ func newPalletConfig(
 		return nil, err
 	}
 
+	// Strict unknown-key check. resource.NativeConfig uses lenient JSON
+	// unmarshal — typos like `box_width` (vs `box_width_mm`) get
+	// silently ignored, the missing dim becomes 0, and pack-sequencer
+	// reports is_complete=true on cycle 1. The dryrun's most painful
+	// invisible bug. Rejecting at construction makes the typo loud.
+	if err := rejectUnknownAttributes(conf.Attributes); err != nil {
+		return nil, err
+	}
+
 	observer := cfg.ObserverFrame
 	if observer == "" {
 		observer = "world"
 	}
 
 	var palletRes resource.Resource
-	palletPose := spatialmath.NewZeroPose()
-	pw, pl, pt := DefaultPalletWidthMM, DefaultPalletLengthMM, DefaultPalletThicknessMM
 	if cfg.Pallet != "" {
 		palletRes, err = resource.FromDependencies[resource.Resource](deps, generic.Named(cfg.Pallet))
 		if err != nil {
 			return nil, fmt.Errorf("pallet dependency %q not available: %w", cfg.Pallet, err)
 		}
-		centerPose, w, l, t, err := queryPalletAttributes(palletRes)
-		if err != nil {
+		// Validate the pallet handle works (one DoCommand round-trip)
+		// so a misconfigured pallet surfaces immediately rather than
+		// at the first next_box call. Result is discarded — live
+		// fetches happen per call so set_dimensions updates take
+		// effect without bouncing pack-sequencer.
+		if _, _, _, _, err := queryPalletAttributes(palletRes); err != nil {
 			return nil, fmt.Errorf("query pallet %q attributes: %w", cfg.Pallet, err)
 		}
-		// The Pallet component's frame is at the wood's centroid (Viam
-		// convention: dragging the frame in the 3D viewer drags the
-		// visible box). Pallet-local placements are measured from one
-		// corner with z=0 at the top of the wood, so we offset by
-		// (-w/2, -l/2, +t/2) in frame-local terms to get the corner pose
-		// used for composition. Doing this once at construction means
-		// downstream code just composes palletPose × pose_in_pallet.
-		cornerOffset := spatialmath.NewPoseFromPoint(r3.Vector{X: -w / 2, Y: -l / 2, Z: t / 2})
-		palletPose = spatialmath.Compose(centerPose, cornerOffset)
-		pw, pl, pt = w, l, t
-		logger.Infow("pallet component wired",
-			"name", cfg.Pallet,
-			"width_mm", pw, "length_mm", pl, "thickness_mm", pt,
-			"corner_x", palletPose.Point().X, "corner_y", palletPose.Point().Y, "corner_z", palletPose.Point().Z,
-		)
+		logger.Infow("pallet component wired (live-fetched each call)", "name", cfg.Pallet)
 	}
 
 	return &palletSequencer{
-		name:              conf.ResourceName(),
-		logger:            logger,
-		cfg:               *cfg,
-		cursor:            newCursor(),
-		pallet:            palletRes,
-		palletPose:        palletPose,
-		palletWidthMM:     pw,
-		palletLengthMM:    pl,
-		palletThicknessMM: pt,
-		observerFrame:     observer,
-		changeChan:        make(chan worldstatestore.TransformChange, 128),
-		dynamicBoxes:      map[int]*commonpb.Transform{},
-		dynamicVersion:    map[int]int{},
+		name:           conf.ResourceName(),
+		logger:         logger,
+		cfg:            *cfg,
+		cursor:         newCursor(),
+		pallet:         palletRes,
+		observerFrame:  observer,
+		changeChan:     make(chan worldstatestore.TransformChange, 128),
+		dynamicBoxes:   map[int]*commonpb.Transform{},
+		dynamicVersion: map[int]int{},
 	}, nil
 }
 
+// rejectUnknownAttributes catches typos in the persisted cell config
+// before they become silent runtime no-ops. Marshals the raw attributes
+// back to JSON and re-decodes with DisallowUnknownFields onto a fresh
+// Config. The roundtrip is the only way to surface unknown keys —
+// resource.NativeConfig uses lenient decode.
+func rejectUnknownAttributes(attrs map[string]interface{}) error {
+	raw, err := json.Marshal(attrs)
+	if err != nil {
+		return fmt.Errorf("re-marshal attributes for strict check: %w", err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&Config{}); err != nil {
+		return fmt.Errorf("config attribute error (likely a typo — see expected keys in README): %w", err)
+	}
+	return nil
+}
+
 // queryPalletAttributes asks the pallet component for its world pose and box
-// dimensions in one DoCommand. Errors propagate so a misconfigured pallet
-// surfaces at construction time rather than silently falling back to
-// defaults.
+// dimensions in one DoCommand. Called at construction to validate the
+// pallet handle and on every pack-order computation thereafter — there
+// is no cache, so live `set_dimensions` updates on the pallet take
+// effect on the next call without operators having to bounce
+// pack-sequencer.
 func queryPalletAttributes(p resource.Resource) (spatialmath.Pose, float64, float64, float64, error) {
 	resp, err := p.DoCommand(context.Background(), map[string]interface{}{"get_attributes": true})
 	if err != nil {
@@ -319,6 +365,30 @@ func queryPalletAttributes(p resource.Resource) (spatialmath.Pose, float64, floa
 		},
 	)
 	return pose, width, length, thickness, nil
+}
+
+// palletInfo returns the live pallet corner pose + dimensions. Composes
+// the centroid → bottom-left-corner offset on the fly so set_dimensions
+// changes are reflected the moment they happen. Falls back to the
+// hard-coded GMA defaults when no pallet component is wired.
+//
+// Must be called outside p.mu — issues a DoCommand on a sibling
+// resource. Returns the corner pose (already composed), width, length,
+// thickness.
+func (p *palletSequencer) palletInfo() (spatialmath.Pose, float64, float64, float64) {
+	if p.pallet == nil {
+		return spatialmath.NewZeroPose(), DefaultPalletWidthMM, DefaultPalletLengthMM, DefaultPalletThicknessMM
+	}
+	centerPose, w, l, t, err := queryPalletAttributes(p.pallet)
+	if err != nil {
+		p.logger.Warnw("pallet live-fetch failed, using last-known defaults", "error", err)
+		return spatialmath.NewZeroPose(), DefaultPalletWidthMM, DefaultPalletLengthMM, DefaultPalletThicknessMM
+	}
+	// Pallet frame is the centroid; pack math uses the bottom-left
+	// corner of the top face. Offset by (-w/2, -l/2, +t/2) in
+	// frame-local terms.
+	cornerOffset := spatialmath.NewPoseFromPoint(r3.Vector{X: -w / 2, Y: -l / 2, Z: t / 2})
+	return spatialmath.Compose(centerPose, cornerOffset), w, l, t
 }
 
 func asFloat(v interface{}) float64 {
@@ -642,8 +712,9 @@ var cmdHandlers = []struct {
 		return p.attrsResponse(applied), nil
 	}},
 	{"get_pallet_home", func(p *palletSequencer, _ map[string]interface{}) (map[string]interface{}, error) {
+		palletPose, pw, pl, _ := p.palletInfo()
 		c := p.snapshot()
-		local, world := p.palletHomeLocalAndWorld(c)
+		local, world := p.palletHomeLocalAndWorld(c, palletPose, pw, pl)
 		return map[string]interface{}{
 			"pallet_home_local": pose6DToMap(local),
 			"pallet_home_world": pose6DToMap(world),
@@ -702,8 +773,9 @@ func (p *palletSequencer) DoCommand(_ context.Context, cmd map[string]interface{
 // palletizer's doVerifyPallet falls back to zero approach offset and
 // reports place_start == place_end.
 func (p *palletSequencer) doGetPackOrder() map[string]interface{} {
+	palletPose, pw, pl, pt := p.palletInfo()
 	c := p.snapshot()
-	placements, cols, rows, layers, capacity, mode, warnings := packOrder(c, p.palletWidthMM, p.palletLengthMM)
+	placements, cols, rows, layers, capacity, mode, warnings := packOrder(c, pw, pl)
 	overflow := 0
 	if c.Quantity > capacity {
 		overflow = c.Quantity - capacity
@@ -735,7 +807,7 @@ func (p *palletSequencer) doGetPackOrder() map[string]interface{} {
 			r3.Vector{X: pl.XMM, Y: pl.YMM, Z: pl.ZMM},
 			&spatialmath.OrientationVectorDegrees{OX: ori.OX, OY: ori.OY, OZ: ori.OZ, Theta: ori.Theta},
 		)
-		worldPose := poseToPose6D(spatialmath.Compose(p.palletPose, localPose))
+		worldPose := poseToPose6D(spatialmath.Compose(palletPose, localPose))
 		enriched = append(enriched, map[string]interface{}{
 			"seq":       pl.Seq,
 			"col":       pl.Col,
@@ -778,10 +850,10 @@ func (p *palletSequencer) doGetPackOrder() map[string]interface{} {
 		"overflow":            overflow,
 		"mode":                mode,
 		"warnings":            warnings,
-		"pallet_thickness_mm": p.palletThicknessMM,
-		"pallet_width_mm":     p.palletWidthMM,
-		"pallet_length_mm":    p.palletLengthMM,
-		"pallet_pose":         pose6DToMap(poseToPose6D(p.palletPose)),
+		"pallet_thickness_mm": pt,
+		"pallet_width_mm":     pw,
+		"pallet_length_mm":    pl,
+		"pallet_pose":         pose6DToMap(poseToPose6D(palletPose)),
 	}
 }
 
@@ -871,6 +943,7 @@ func (p *palletSequencer) doSetBoxTransform(raw interface{}) (map[string]interfa
 			&spatialmath.OrientationVectorDegrees{OX: ox, OY: oy, OZ: oz, Theta: theta},
 		),
 		DimsMM: r3.Vector{X: p.cfg.BoxWidthMM, Y: p.cfg.BoxLengthMM, Z: p.cfg.BoxHeightMM},
+		Color:  p.vizColor(),
 	}.ToTransform()
 	p.dynamicBoxes[seq] = tf
 	p.mu.Unlock()
@@ -907,13 +980,14 @@ func (p *palletSequencer) doClearBoxTransform(raw interface{}) (map[string]inter
 	}
 	seq := int(seqF)
 
+	palletPose, pw, pl, _ := p.palletInfo()
 	p.mu.Lock()
 	prev := p.dynamicBoxes[seq]
 	delete(p.dynamicBoxes, seq)
 	stillPlaced := p.cursor.done[seq] == "success"
 	var placedTf *commonpb.Transform
 	if stillPlaced {
-		placedTf = p.buildTransformForSeqLocked(seq)
+		placedTf = p.buildTransformForSeqLocked(palletPose, pw, pl, seq)
 	}
 	p.mu.Unlock()
 
@@ -966,7 +1040,8 @@ func (p *palletSequencer) doGetProgress() map[string]interface{} {
 	sort.Ints(skippedSeqs)
 	sort.Ints(failedSeqs)
 
-	placements, _, _, _, _, _, _ := packOrder(c, p.palletWidthMM, p.palletLengthMM)
+	_, pw, pl, _ := p.palletInfo()
+	placements, _, _, _, _, _, _ := packOrder(c, pw, pl)
 	total := len(placements)
 
 	return map[string]interface{}{
@@ -988,12 +1063,13 @@ func (p *palletSequencer) doGetProgress() map[string]interface{} {
 // the pallet area, +X right, +Y receding into the scene, +Z up); the
 // palletizer composes its own pallet_origin to get a world-frame pose.
 func (p *palletSequencer) doNextBox() (map[string]interface{}, error) {
+	palletPose, pw, plLen, _ := p.palletInfo()
 	p.mu.Lock()
 	c := p.cfg
 	cur := p.cursor
 	p.mu.Unlock()
 
-	placements, _, _, _, _, _, _ := packOrder(c, p.palletWidthMM, p.palletLengthMM)
+	placements, _, _, _, _, _, _ := packOrder(c, pw, plLen)
 	total := len(placements)
 
 	// Find first placement at-or-after cursor.next that isn't already done.
@@ -1067,8 +1143,8 @@ func (p *palletSequencer) doNextBox() (map[string]interface{}, error) {
 		r3.Vector{X: next.XMM + offsetX, Y: next.YMM + offsetY, Z: next.ZMM + height},
 		&spatialmath.OrientationVectorDegrees{OX: ori.OX, OY: ori.OY, OZ: ori.OZ, Theta: ori.Theta},
 	)
-	endWorld := poseToPose6D(spatialmath.Compose(p.palletPose, endLocal))
-	startWorld := poseToPose6D(spatialmath.Compose(p.palletPose, startLocal))
+	endWorld := poseToPose6D(spatialmath.Compose(palletPose, endLocal))
+	startWorld := poseToPose6D(spatialmath.Compose(palletPose, startLocal))
 
 	return map[string]interface{}{
 		"seq":   next.Seq,
@@ -1120,6 +1196,10 @@ func (p *palletSequencer) doReportPlacement(raw interface{}) (map[string]interfa
 	success, _ := args["success"].(bool)
 	errMsg, _ := args["error"].(string)
 
+	// Live-fetch pallet info BEFORE locking — DoCommand on the sibling
+	// pallet must not happen under our mutex.
+	palletPose, pw, plLen, _ := p.palletInfo()
+
 	p.mu.Lock()
 	var pendingEmits []worldstatestore.TransformChange
 	// Push emits before unlock so LIFO-ordered defers fire them *after*
@@ -1155,7 +1235,7 @@ func (p *palletSequencer) doReportPlacement(raw interface{}) (map[string]interfa
 		// dynamic Transform to inherit, e.g. a caller using the API
 		// without the lifecycle helpers.
 		if !alreadyDone && !hadDynamic {
-			placedTf := p.buildTransformForSeqLocked(seq)
+			placedTf := p.buildTransformForSeqLocked(palletPose, pw, plLen, seq)
 			if placedTf != nil {
 				pendingEmits = append(pendingEmits, worldstatestore.TransformChange{
 					ChangeType: wsspb.TransformChangeType_TRANSFORM_CHANGE_TYPE_ADDED,
@@ -1171,7 +1251,7 @@ func (p *palletSequencer) doReportPlacement(raw interface{}) (map[string]interfa
 
 	placed, failed, skipped := p.cursor.counts()
 	c := p.cfg
-	placements, _, _, _, _, _, _ := packOrder(c, p.palletWidthMM, p.palletLengthMM)
+	placements, _, _, _, _, _, _ := packOrder(c, pw, plLen)
 	total := len(placements)
 	remaining := total - placed - skipped
 	complete := remaining == 0 && total > 0
@@ -1202,6 +1282,8 @@ func (p *palletSequencer) doSkipBox(raw interface{}) (map[string]interface{}, er
 	seq := int(seqF)
 	reason, _ := args["reason"].(string)
 
+	_, pw, plLen, _ := p.palletInfo()
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -1220,7 +1302,7 @@ func (p *palletSequencer) doSkipBox(raw interface{}) (map[string]interface{}, er
 	}
 	placed, _, skipped := p.cursor.counts()
 	c := p.cfg
-	placements, _, _, _, _, _, _ := packOrder(c, p.palletWidthMM, p.palletLengthMM)
+	placements, _, _, _, _, _, _ := packOrder(c, pw, plLen)
 	total := len(placements)
 	remaining := total - placed - skipped
 
@@ -1303,15 +1385,18 @@ func orientationForPlacement(c Config, pl Placement) Pose6D {
 // corner at Z=200, theta=0, straight-down gripper) for any missing
 // pieces — width/length default from the pallet component's dimensions.
 // World composes local with the pallet component's world pose.
-func (p *palletSequencer) palletHomeLocalAndWorld(c Config) (Pose6D, Pose6D) {
+//
+// Caller pre-fetches the pallet info (corner pose + dims) so this
+// method doesn't issue a DoCommand under any lock.
+func (p *palletSequencer) palletHomeLocalAndWorld(c Config, palletPose spatialmath.Pose, pw, pl float64) (Pose6D, Pose6D) {
 	var local Pose6D
 	if c.PalletHome != nil {
 		local = *c.PalletHome
 	}
 	if local.X == 0 && local.Y == 0 && local.Z == 0 &&
 		(c.PalletHome == nil || (c.PalletHome.X == 0 && c.PalletHome.Y == 0 && c.PalletHome.Z == 0)) {
-		local.X = p.palletWidthMM
-		local.Y = p.palletLengthMM
+		local.X = pw
+		local.Y = pl
 		local.Z = 200
 	}
 	local.OX, local.OY, local.OZ = 0, 0, -1
@@ -1320,7 +1405,7 @@ func (p *palletSequencer) palletHomeLocalAndWorld(c Config) (Pose6D, Pose6D) {
 		r3.Vector{X: local.X, Y: local.Y, Z: local.Z},
 		&spatialmath.OrientationVectorDegrees{OX: 0, OY: 0, OZ: -1, Theta: local.Theta},
 	)
-	worldPose := spatialmath.Compose(p.palletPose, localPose)
+	worldPose := spatialmath.Compose(palletPose, localPose)
 	pt := worldPose.Point()
 	ori := worldPose.Orientation().OrientationVectorDegrees()
 	world := Pose6D{
@@ -1383,6 +1468,9 @@ func (p *palletSequencer) ListUUIDs(_ context.Context, _ map[string]any) ([][]by
 // look like "box-<seq>-v<N>" and are stored verbatim; the canonical
 // "box-<seq>" comes from the pack order for placed seqs.
 func (p *palletSequencer) GetTransform(_ context.Context, uuid []byte, _ map[string]any) (*commonpb.Transform, error) {
+	// Live-fetch pallet info before locking — keeps the DoCommand to
+	// the sibling pallet out of our mutex.
+	palletPose, pw, pl, _ := p.palletInfo()
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for _, tf := range p.dynamicBoxes {
@@ -1397,7 +1485,7 @@ func (p *palletSequencer) GetTransform(_ context.Context, uuid []byte, _ map[str
 	if p.cursor.done[seq] != "success" {
 		return nil, fmt.Errorf("seq %d not placed", seq)
 	}
-	tf := p.buildTransformForSeqLocked(seq)
+	tf := p.buildTransformForSeqLocked(palletPose, pw, pl, seq)
 	if tf == nil {
 		return nil, fmt.Errorf("seq %d has no placement", seq)
 	}
@@ -1415,8 +1503,12 @@ func (p *palletSequencer) StreamTransformChanges(ctx context.Context, _ map[stri
 // space, composing pallet_origin with the box's pallet-frame center.
 // placement.z_mm is the gripper pose at the top face; subtract half the
 // box height to get the center.
-func (p *palletSequencer) buildTransformForSeqLocked(seq int) *commonpb.Transform {
-	placements, _, _, _, _, _, _ := packOrder(p.cfg, p.palletWidthMM, p.palletLengthMM)
+//
+// Caller must hold p.mu (reads p.cfg) and must pre-fetch the pallet
+// info (corner pose + dims) to keep the DoCommand on the sibling
+// pallet out of the lock scope.
+func (p *palletSequencer) buildTransformForSeqLocked(palletPose spatialmath.Pose, pw, pl float64, seq int) *commonpb.Transform {
+	placements, _, _, _, _, _, _ := packOrder(p.cfg, pw, pl)
 	var placement *Placement
 	for i := range placements {
 		if placements[i].Seq == seq {
@@ -1435,8 +1527,9 @@ func (p *palletSequencer) buildTransformForSeqLocked(seq int) *commonpb.Transfor
 	return viz.Box{
 		UUID:          uuid,
 		ObserverFrame: p.observerFrame,
-		Pose:          spatialmath.Compose(p.palletPose, centerInPallet),
+		Pose:          spatialmath.Compose(palletPose, centerInPallet),
 		DimsMM:        r3.Vector{X: placement.Width, Y: placement.Length, Z: placement.Height},
+		Color:         p.vizColor(),
 	}.ToTransform()
 }
 
