@@ -405,6 +405,49 @@ func asFloat(v interface{}) float64 {
 	return 0
 }
 
+// parsePoseArgs extracts a flat (x, y, z, o_x, o_y, o_z, theta) tuple
+// from either calling convention used by `set_box_transform`:
+//
+//   - nested under "pose": {"pose": {"x": ..., "y": ..., ...}}
+//   - flat at args level: {"x": ..., "y": ..., ...}
+//
+// Nested wins when both shapes are present. Missing fields decode to
+// zero — caller decides what to do with them (set_box_transform
+// defaults oz=1 if all OV components are zero).
+func parsePoseArgs(args map[string]interface{}) (x, y, z, ox, oy, oz, theta float64) {
+	src := args
+	if pm, ok := args["pose"].(map[string]interface{}); ok {
+		src = pm
+	}
+	x = asFloat(src["x"])
+	y = asFloat(src["y"])
+	z = asFloat(src["z"])
+	ox = asFloat(src["o_x"])
+	oy = asFloat(src["o_y"])
+	oz = asFloat(src["o_z"])
+	theta = asFloat(src["theta"])
+	return
+}
+
+// parseColorArg pulls an RGB+opacity color from a map. Out-of-range
+// channels (clamped to 0..255) and out-of-range opacity (0..1) silently
+// fall back to the supplied default — set_box_transform shouldn't fail
+// just because someone typo'd a color value.
+func parseColorArg(m map[string]interface{}, fallback viz.Color) viz.Color {
+	r := int(asFloat(m["r"]))
+	g := int(asFloat(m["g"]))
+	b := int(asFloat(m["b"]))
+	a := asFloat(m["opacity"])
+	if r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0 || a > 1 {
+		return fallback
+	}
+	if r == 0 && g == 0 && b == 0 && a == 0 {
+		// Empty color object — caller wants the default.
+		return fallback
+	}
+	return viz.Color{R: r, G: g, B: b, Opacity: a}
+}
+
 func (p *palletSequencer) Name() resource.Name { return p.name }
 
 // Placement describes one box slot in the computed pack order.
@@ -897,14 +940,34 @@ func (p *palletSequencer) doResetCursor() (map[string]interface{}, error) {
 // to the gripper during transit, etc. The seq doesn't need to be in the
 // cursor yet — anything the palletizer wants to visualize.
 //
+// Two pose-arg shapes are accepted (the dryrun-natural nested form had
+// been silently dropped pre-0.3.0):
+//
+//	# Nested (preferred — matches every other arg-bearing verb):
 //	{"set_box_transform": {
 //	    "seq":    7,
-//	    "parent": "fake-gripper",            // any frame name; "world" by default
-//	    "x": 0, "y": 0, "z": 30,             // pose in parent frame, mm
+//	    "parent": "gripper",                 // any frame name; observer_frame by default
+//	    "pose":   {"x": 0, "y": 0, "z": 30,
+//	              "o_x": 0, "o_y": 0, "o_z": 1, "theta": 0},
+//	    "color":  {"r": 176, "g": 136, "b": 80}   // optional per-call override
+//	}}
+//
+//	# Flat (legacy form for back-compat):
+//	{"set_box_transform": {
+//	    "seq":    7,
+//	    "parent": "gripper",
+//	    "x": 0, "y": 0, "z": 30,
 //	    "o_x": 0, "o_y": 0, "o_z": 1, "theta": 0
 //	}}
 //
-// Box dimensions come from cfg.box_*_mm.
+// When neither pose-shape carries any pose info (a parent-binding-only
+// call), the default OV is straight-up (oz=1) at the parent frame's
+// origin — preserves the pre-0.3.0 "bind to a frame" use case where
+// pose came entirely from the parent frame.
+//
+// Box dimensions come from cfg.box_*_mm; box color from the optional
+// per-call override or, failing that, from cfg.box_color (defaults to
+// cardboard brown — see defaultBoxColor).
 func (p *palletSequencer) doSetBoxTransform(raw interface{}) (map[string]interface{}, error) {
 	args, ok := raw.(map[string]interface{})
 	if !ok {
@@ -919,16 +982,14 @@ func (p *palletSequencer) doSetBoxTransform(raw interface{}) (map[string]interfa
 	if parent == "" {
 		parent = p.observerFrame
 	}
-	x, _ := args["x"].(float64)
-	y, _ := args["y"].(float64)
-	z, _ := args["z"].(float64)
-	ox, _ := args["o_x"].(float64)
-	oy, _ := args["o_y"].(float64)
-	oz, _ := args["o_z"].(float64)
+	x, y, z, ox, oy, oz, theta := parsePoseArgs(args)
 	if ox == 0 && oy == 0 && oz == 0 {
 		oz = 1 // default OV: straight up
 	}
-	theta, _ := args["theta"].(float64)
+	color := p.vizColor()
+	if cm, ok := args["color"].(map[string]interface{}); ok {
+		color = parseColorArg(cm, color)
+	}
 
 	p.mu.Lock()
 	p.dynamicVersion[seq]++
@@ -943,7 +1004,7 @@ func (p *palletSequencer) doSetBoxTransform(raw interface{}) (map[string]interfa
 			&spatialmath.OrientationVectorDegrees{OX: ox, OY: oy, OZ: oz, Theta: theta},
 		),
 		DimsMM: r3.Vector{X: p.cfg.BoxWidthMM, Y: p.cfg.BoxLengthMM, Z: p.cfg.BoxHeightMM},
-		Color:  p.vizColor(),
+		Color:  color,
 	}.ToTransform()
 	p.dynamicBoxes[seq] = tf
 	p.mu.Unlock()

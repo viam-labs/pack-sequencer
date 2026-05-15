@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/golang/geo/r3"
+	"github.com/viam-labs/viamkit/viz"
 	"go.viam.com/rdk/spatialmath"
 )
 
@@ -187,5 +188,84 @@ func TestVizColorConfigOverride(t *testing.T) {
 	if c.R != 10 || c.G != 20 || c.B != 30 || math.Abs(c.Opacity-0.5) > eps {
 		t.Errorf("override: got (%d,%d,%d,opacity=%v), want (10,20,30,0.5)",
 			c.R, c.G, c.B, c.Opacity)
+	}
+}
+
+// parsePoseArgs is the silent-zero fix from the 2026-05-15 dryrun.
+// The dryrun-claude sent {"pose": {x,y,z,...}} (nested) and
+// pack-sequencer 0.2.0 read flat-only — every set_box_transform pose
+// landed at world origin instead of the supplied coords.
+
+func TestParsePoseArgs_NestedForm(t *testing.T) {
+	args := map[string]interface{}{
+		"seq":    1.0,
+		"parent": "world",
+		"pose": map[string]interface{}{
+			"x": 100.0, "y": 200.0, "z": 300.0,
+			"o_z": -1.0, "theta": 90.0,
+		},
+	}
+	x, y, z, ox, oy, oz, theta := parsePoseArgs(args)
+	if x != 100 || y != 200 || z != 300 || ox != 0 || oy != 0 || oz != -1 || theta != 90 {
+		t.Errorf("nested: got (%v,%v,%v) ov=(%v,%v,%v) theta=%v, want (100,200,300) ov=(0,0,-1) theta=90",
+			x, y, z, ox, oy, oz, theta)
+	}
+}
+
+func TestParsePoseArgs_FlatForm(t *testing.T) {
+	args := map[string]interface{}{
+		"seq":    1.0,
+		"x":      111.0, "y": 222.0, "z": 333.0,
+		"o_z":   -1.0, "theta": 45.0,
+	}
+	x, y, z, _, _, oz, theta := parsePoseArgs(args)
+	if x != 111 || y != 222 || z != 333 || oz != -1 || theta != 45 {
+		t.Errorf("flat: got (%v,%v,%v) oz=%v theta=%v, want (111,222,333) oz=-1 theta=45",
+			x, y, z, oz, theta)
+	}
+}
+
+func TestParsePoseArgs_NestedWinsOverFlat(t *testing.T) {
+	args := map[string]interface{}{
+		"x": 999.0, "y": 999.0, "z": 999.0,
+		"pose": map[string]interface{}{"x": 1.0, "y": 2.0, "z": 3.0, "o_z": 1.0},
+	}
+	x, y, z, _, _, _, _ := parsePoseArgs(args)
+	if x != 1 || y != 2 || z != 3 {
+		t.Errorf("nested+flat: got (%v,%v,%v), want (1,2,3) (nested wins)", x, y, z)
+	}
+}
+
+func TestParsePoseArgs_Empty(t *testing.T) {
+	x, y, z, ox, oy, oz, theta := parsePoseArgs(map[string]interface{}{"seq": 1.0})
+	if x != 0 || y != 0 || z != 0 || ox != 0 || oy != 0 || oz != 0 || theta != 0 {
+		t.Errorf("empty: got (%v,%v,%v) ov=(%v,%v,%v) theta=%v, want all zeros", x, y, z, ox, oy, oz, theta)
+	}
+}
+
+func TestParseColorArg_EmptyFallsBack(t *testing.T) {
+	fallback := viz.Color{R: 1, G: 2, B: 3, Opacity: 0.5}
+	got := parseColorArg(map[string]interface{}{}, fallback)
+	if got != fallback {
+		t.Errorf("empty: got %+v, want fallback %+v", got, fallback)
+	}
+}
+
+func TestParseColorArg_OutOfRangeFallsBack(t *testing.T) {
+	fallback := viz.Color{R: 1, G: 2, B: 3, Opacity: 0.5}
+	got := parseColorArg(map[string]interface{}{"r": float64(300), "g": float64(0), "b": float64(0)}, fallback)
+	if got != fallback {
+		t.Errorf("out-of-range r=300: got %+v, want fallback %+v", got, fallback)
+	}
+}
+
+func TestParseColorArg_ValidApplies(t *testing.T) {
+	fallback := viz.Color{R: 1, G: 2, B: 3, Opacity: 0.5}
+	got := parseColorArg(map[string]interface{}{
+		"r": float64(180), "g": float64(140), "b": float64(80), "opacity": float64(0.9),
+	}, fallback)
+	want := viz.Color{R: 180, G: 140, B: 80, Opacity: 0.9}
+	if got != want {
+		t.Errorf("valid: got %+v, want %+v", got, want)
 	}
 }

@@ -88,4 +88,4 @@ Bump `VERSION` first.
 
 - GitHub: [`viam-labs/pack-sequencer`](https://github.com/viam-labs/pack-sequencer)
 - Registry: `viam:pack-sequencer`
-- Latest published: `0.2.0` (live pallet-dim fetch + strict config validation + cardboard-brown box default)
+- Latest published: `0.3.0` (`set_box_transform` honors user-supplied pose [nested or flat]; per-call color override; viamkit v0.11.0)
