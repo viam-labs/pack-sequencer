@@ -4,10 +4,15 @@ go 1.25.1
 
 require (
 	github.com/golang/geo v0.0.0-20230421003525-6adc56603217
+	github.com/viam-labs/pack-sequencer/contracts v0.0.0
 	github.com/viam-labs/viamkit v0.11.0
 	go.viam.com/api v0.1.496
 	go.viam.com/rdk v0.105.0
 )
+
+// The wire contract is a nested module in this same repo. The producer
+// marshals its DoCommand responses through it; consumers import it too.
+replace github.com/viam-labs/pack-sequencer/contracts => ./contracts
 
 require (
 	cloud.google.com/go v0.115.1 // indirect
