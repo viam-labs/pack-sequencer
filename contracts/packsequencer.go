@@ -18,27 +18,34 @@ const (
 	VerbSetAttributes     = "set_attributes"
 )
 
-// NextBoxResponse is the placement of the box at the current cursor —
-// where the next box goes. It carries geometry only; ask GetStatus for
-// progress counters. When the pack is finished, IsComplete is true and
-// the placement fields are zero.
+// NextBoxResponse is the placement of the box at the current box index
+// — where the next box goes. It carries geometry only; ask GetStatus
+// for progress counters. When the pack is finished, IsComplete is true
+// and the placement fields are zero.
 //
-// PlaceEndInWorld is the world-frame pose the box is placed at — the
-// pose to hand to the motion service. PlaceStartInWorld is the pose
-// just above it that the arm descends from. PoseInPallet and
-// ApproachOffsetInPallet describe the same placement in the pallet's
-// local frame (useful for visualization, not for motion).
+// The place move is a two-pose trajectory, not a single drop:
+//
+//   - PlaceEnd is the final slot — where the box is set down.
+//   - PlaceStart is offset up and over from PlaceEnd by the angled
+//     approach, so the box descends diagonally into the slot and clears
+//     already-placed neighbours instead of dragging across them.
+//
+// The arm moves to PlaceStart, then descends to PlaceEnd. Each pose is
+// given in two frames: the *InWorld pair is pre-composed with the
+// pallet's world pose — hand those straight to the motion service. The
+// *InPallet pair is the same two poses in the pallet's local frame,
+// for visualization or pallet-frame reasoning (not needed for motion).
 type NextBoxResponse struct {
-	Seq                    int            `json:"seq"`
-	Col                    int            `json:"col"`
-	Row                    int            `json:"row"`
-	Layer                  int            `json:"layer"`
-	PoseInPallet           Pose6D         `json:"pose_in_pallet"`
-	ApproachOffsetInPallet ApproachOffset `json:"approach_offset_in_pallet"`
-	PlaceEndInWorld        Pose6D         `json:"place_end_in_world"`
-	PlaceStartInWorld      Pose6D         `json:"place_start_in_world"`
-	BoxDimensionsMM        BoxDimensions  `json:"box_dimensions_mm"`
-	IsComplete             bool           `json:"is_complete"`
+	Seq                int           `json:"seq"`
+	Col                int           `json:"col"`
+	Row                int           `json:"row"`
+	Layer              int           `json:"layer"`
+	PlaceStartInWorld  Pose6D        `json:"place_start_in_world"`
+	PlaceEndInWorld    Pose6D        `json:"place_end_in_world"`
+	PlaceStartInPallet Pose6D        `json:"place_start_in_pallet"`
+	PlaceEndInPallet   Pose6D        `json:"place_end_in_pallet"`
+	BoxDimensionsMM    BoxDimensions `json:"box_dimensions_mm"`
+	IsComplete         bool          `json:"is_complete"`
 }
 
 // ApproachOffset is the per-box angled-approach delta in pallet-local

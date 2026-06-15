@@ -693,8 +693,8 @@ func (p *palletSequencer) apply(attrs map[string]interface{}) (Config, error) {
 //
 //	Palletizer-facing sequencing:
 //	{"next_box": true}                            → {seq, col, row, layer,
-//	                                                 pose_in_pallet, approach_offset_in_pallet,
-//	                                                 place_end_in_world, place_start_in_world,
+//	                                                 place_start_in_world, place_end_in_world,
+//	                                                 place_start_in_pallet, place_end_in_pallet,
 //	                                                 box_dimensions_mm, is_complete}
 //	{"report_placement": {"seq":N, "success":bool, "error"?:"…"}}
 //	                                              → {acknowledged, next_box_index, placed,
@@ -1195,19 +1195,22 @@ func (p *palletSequencer) doNextBox() (map[string]interface{}, error) {
 	startWorld := poseToPose6D(spatialmath.Compose(palletPose, startLocal))
 
 	return contracts.MustToMap(contracts.NextBoxResponse{
-		Seq:   next.Seq,
-		Col:   next.Col,
-		Row:   next.Row,
-		Layer: next.Layer,
-		PoseInPallet: contracts.Pose6D{
+		Seq:               next.Seq,
+		Col:               next.Col,
+		Row:               next.Row,
+		Layer:             next.Layer,
+		PlaceStartInWorld: toContractsPose(startWorld),
+		PlaceEndInWorld:   toContractsPose(endWorld),
+		PlaceStartInPallet: contracts.Pose6D{
+			X: next.XMM + offsetX, Y: next.YMM + offsetY, Z: next.ZMM + height,
+			OX: ori.OX, OY: ori.OY, OZ: ori.OZ, Theta: ori.Theta,
+		},
+		PlaceEndInPallet: contracts.Pose6D{
 			X: next.XMM, Y: next.YMM, Z: next.ZMM,
 			OX: ori.OX, OY: ori.OY, OZ: ori.OZ, Theta: ori.Theta,
 		},
-		ApproachOffsetInPallet: contracts.ApproachOffset{X: offsetX, Y: offsetY, Z: height},
-		PlaceEndInWorld:        toContractsPose(endWorld),
-		PlaceStartInWorld:      toContractsPose(startWorld),
-		BoxDimensionsMM:        contracts.BoxDimensions{Width: next.Width, Length: next.Length, Height: next.Height},
-		IsComplete:             false,
+		BoxDimensionsMM: contracts.BoxDimensions{Width: next.Width, Length: next.Length, Height: next.Height},
+		IsComplete:      false,
 	}), nil
 }
 

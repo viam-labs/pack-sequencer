@@ -44,6 +44,8 @@ The wire contract is the in-repo nested module `github.com/viam-labs/pack-sequen
 
 **Verb-rename note (0.4.0):** `get_progress`→`get_status`, `reset_cursor`→`reset_progress`; `next_box` no longer returns progress counters (use `get_status`); `next_seq`→`next_box_index`; `get_status` counters dropped the `_count` suffix. Breaking — ships in lockstep with the palletizer.
 
+**Pose-field note (0.4.0-rc1 / contracts v0.2.0):** `next_box`'s pallet-frame fields are now symmetric with the world-frame pair — `pose_in_pallet`/`approach_offset_in_pallet` → `place_start_in_pallet`/`place_end_in_pallet` (so the response is `place_{start,end}_in_{world,pallet}`). The place move is the two-pose trajectory PlaceStart → PlaceEnd (angled descent). `PackOrderPlacement` (get_pack_order) keeps its `pose_in_*` naming for now.
+
 ## Conventions
 
 - **Cursor survives reconfigure.** A pallet edit (box dimensions, layer count) cascades through AlwaysRebuild but the cursor preserves through. Only `reset_progress` (or a Config that invalidates the pack order) clears it.

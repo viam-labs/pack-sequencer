@@ -55,6 +55,26 @@ func TestNextBoxHasNoCounters(t *testing.T) {
 	}
 }
 
+// TestNextBoxPoseFields asserts the symmetric two-frame place trajectory
+// (start/end × world/pallet) and that the old pose_in_pallet /
+// approach_offset_in_pallet keys are gone.
+func TestNextBoxPoseFields(t *testing.T) {
+	m, err := ToMap(NextBoxResponse{Seq: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"place_start_in_world", "place_end_in_world", "place_start_in_pallet", "place_end_in_pallet"} {
+		if _, ok := m[want]; !ok {
+			t.Errorf("NextBoxResponse missing %q", want)
+		}
+	}
+	for _, gone := range []string{"pose_in_pallet", "approach_offset_in_pallet"} {
+		if _, ok := m[gone]; ok {
+			t.Errorf("NextBoxResponse should no longer carry %q", gone)
+		}
+	}
+}
+
 // TestStatusCounterKeys asserts get_status uses bare counter keys and
 // next_box_index (not the old *_count / next_seq spellings).
 func TestStatusCounterKeys(t *testing.T) {
