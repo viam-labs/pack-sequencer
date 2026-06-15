@@ -101,4 +101,5 @@ Bump `VERSION` first.
 
 - GitHub: [`viam-labs/pack-sequencer`](https://github.com/viam-labs/pack-sequencer)
 - Registry: `viam:pack-sequencer`
-- Latest published: `0.3.0` (`set_box_transform` honors user-supplied pose [nested or flat]; per-call color override; viamkit v0.11.0)
+- Latest published: `0.4.0-rc0` (in-repo `contracts` nested module + producer marshals through it; `next_box` drops counters; `get_progress`→`get_status`, `reset_cursor`→`reset_progress`, `next_seq`→`next_box_index`. Contracts tagged `contracts/v0.1.0`.)
+- Prior: `0.3.0` (`set_box_transform` honors user-supplied pose [nested or flat]; per-call color override; viamkit v0.11.0)
