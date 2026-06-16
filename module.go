@@ -696,7 +696,7 @@ func (p *palletSequencer) apply(attrs map[string]interface{}) (Config, error) {
 //	                                                 place_start_in_world, place_end_in_world,
 //	                                                 place_start_in_pallet, place_end_in_pallet,
 //	                                                 box_dimensions_mm, is_complete}
-//	{"report_placement": {"seq":N, "success":bool, "error"?:"…"}}
+//	{"report_placement": {"seq"?:N, "success":bool, "error"?:"…"}}  // seq omitted = current box
 //	                                              → {acknowledged, next_box_index, placed,
 //	                                                 failed, skipped, remaining, complete}
 //	{"skip_box": {"seq":N, "reason"?:"…"}}        → {skipped, next_box_index, placed, remaining}
@@ -1223,11 +1223,10 @@ func (p *palletSequencer) doReportPlacement(raw interface{}) (map[string]interfa
 	if !ok {
 		return nil, fmt.Errorf("report_placement: expected object, got %T", raw)
 	}
-	seqF, ok := args["seq"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("report_placement: missing or non-numeric 'seq'")
+	seq := 0
+	if seqF, ok := args["seq"].(float64); ok {
+		seq = int(seqF)
 	}
-	seq := int(seqF)
 	success, _ := args["success"].(bool)
 	errMsg, _ := args["error"].(string)
 
@@ -1236,6 +1235,13 @@ func (p *palletSequencer) doReportPlacement(raw interface{}) (map[string]interfa
 	palletPose, pw, plLen, _ := p.palletInfo()
 
 	p.mu.Lock()
+	// A missing or non-positive seq means "the box being placed now" — the
+	// box at the cursor. Seqs are 1-based, so 0 is never a real box; this
+	// lets a consumer report success/failure without tracking the seq
+	// itself (the ReportSuccess / ReportFailure client helpers do this).
+	if seq <= 0 {
+		seq = p.cursor.next
+	}
 	var pendingEmits []worldstatestore.TransformChange
 	// Push emits before unlock so LIFO-ordered defers fire them *after*
 	// the mutex is released — keeps the lock scope narrow even though

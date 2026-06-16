@@ -47,6 +47,22 @@ func ReportPlacement(ctx context.Context, svc DoCommander, req ReportPlacementRe
 	return FromMap[ReportPlacementResponse](m)
 }
 
+// ReportSuccess reports that the box currently being placed — the one at
+// the cursor — went down cleanly, advancing the pack to the next box. It's
+// shorthand for ReportPlacement with no seq and Success=true, so a consumer
+// doesn't have to track the box index just to report it.
+func ReportSuccess(ctx context.Context, svc DoCommander) (ReportPlacementResponse, error) {
+	return ReportPlacement(ctx, svc, ReportPlacementRequest{Success: true})
+}
+
+// ReportFailure reports that the box currently being placed could not be
+// placed, recording reason; the cursor stays put so the next NextBox returns
+// the same box for a retry. Shorthand for ReportPlacement with no seq,
+// Success=false, and Error=reason.
+func ReportFailure(ctx context.Context, svc DoCommander, reason string) (ReportPlacementResponse, error) {
+	return ReportPlacement(ctx, svc, ReportPlacementRequest{Success: false, Error: reason})
+}
+
 // GetBoxDims returns the pack's box dimensions — the single source of
 // truth a consumer pulls at construction.
 func GetBoxDims(ctx context.Context, svc DoCommander) (GetBoxDimsResponse, error) {

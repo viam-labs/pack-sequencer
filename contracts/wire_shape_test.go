@@ -135,3 +135,22 @@ func TestResetProgressPropagatesError(t *testing.T) {
 		t.Fatalf("request missing verb %q: %v", VerbResetProgress, f.gotCmd)
 	}
 }
+
+func TestReportSuccessAndFailure(t *testing.T) {
+	f := &fakeDoCommander{reply: map[string]interface{}{"complete": false}}
+	if _, err := ReportSuccess(context.Background(), f); err != nil {
+		t.Fatal(err)
+	}
+	body := f.gotCmd[VerbReportPlacement].(map[string]interface{})
+	if body["success"].(bool) != true {
+		t.Errorf("ReportSuccess should send success=true: %v", body)
+	}
+	f2 := &fakeDoCommander{reply: map[string]interface{}{}}
+	if _, err := ReportFailure(context.Background(), f2, "boom"); err != nil {
+		t.Fatal(err)
+	}
+	body2 := f2.gotCmd[VerbReportPlacement].(map[string]interface{})
+	if body2["success"].(bool) != false || body2["error"].(string) != "boom" {
+		t.Errorf("ReportFailure should send success=false, error=boom: %v", body2)
+	}
+}

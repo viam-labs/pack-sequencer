@@ -30,7 +30,7 @@ This is intentional rather than reading the frame system directly — DoCommand 
 | Verb | Args | Returns | Used by |
 |---|---|---|---|
 | `next_box` | none | placement + pre-composed world poses + `is_complete` (NO counters) | palletizer every cycle |
-| `report_placement` | `{seq, success, error?}` | counters + `complete` flag (`next_box_index`) | palletizer at end of cycle |
+| `report_placement` | `{seq?, success, error?}` | counters + `complete` flag (`next_box_index`) | palletizer at end of cycle |
 | `get_box_dims` | none | `{box_length_mm, box_width_mm, box_height_mm}` | palletizer at construction |
 | `get_pallet_home` | none | `pallet_home_local` + `pallet_home_world` | palletizer's `resolvePalletHomePose` |
 | `get_pack_order` | none | full placement list + pallet pose/dims | webapp 3D preview, verify_pallet |
@@ -45,6 +45,8 @@ The wire contract is the in-repo nested module `github.com/viam-labs/pack-sequen
 **Verb-rename note (0.4.0):** `get_progress`→`get_status`, `reset_cursor`→`reset_progress`; `next_box` no longer returns progress counters (use `get_status`); `next_seq`→`next_box_index`; `get_status` counters dropped the `_count` suffix. Breaking — ships in lockstep with the palletizer.
 
 **Pose-field note (0.4.0-rc1 / contracts v0.2.0):** `next_box`'s pallet-frame fields are now symmetric with the world-frame pair — `pose_in_pallet`/`approach_offset_in_pallet` → `place_start_in_pallet`/`place_end_in_pallet` (so the response is `place_{start,end}_in_{world,pallet}`). The place move is the two-pose trajectory PlaceStart → PlaceEnd (angled descent). `PackOrderPlacement` (get_pack_order) keeps its `pose_in_*` naming for now.
+
+**Report helpers (0.4.0-rc2 / contracts v0.3.0):** `report_placement`'s `seq` is now optional — omitted or non-positive means "the box at the cursor" (seqs are 1-based). The contracts client adds `ReportSuccess(ctx, svc)` and `ReportFailure(ctx, svc, reason)` shorthands so a consumer reports the current box without tracking the seq.
 
 ## Conventions
 
