@@ -4,18 +4,18 @@ package contracts
 // below rather than these constants directly where you can; they are
 // exported for callers that build a raw DoCommand map.
 const (
-	VerbNextBox           = "next_box"
-	VerbReportPlacement   = "report_placement"
-	VerbGetBoxDims        = "get_box_dims"
-	VerbGetPalletHome     = "get_pallet_home"
-	VerbGetPackOrder      = "get_pack_order"
-	VerbGetStatus         = "get_status"
-	VerbResetProgress     = "reset_progress"
-	VerbSkipBox           = "skip_box"
-	VerbSetBoxVisual   = "set_box_visual"
-	VerbClearBoxVisual = "clear_box_visual"
-	VerbGetAttributes     = "get_attributes"
-	VerbSetAttributes     = "set_attributes"
+	VerbNextBox         = "next_box"
+	VerbReportPlacement = "report_placement"
+	VerbGetBoxDims      = "get_box_dims"
+	VerbGetPalletHome   = "get_pallet_home"
+	VerbGetPackOrder    = "get_pack_order"
+	VerbGetStatus       = "get_status"
+	VerbResetProgress   = "reset_progress"
+	VerbSkipBox         = "skip_box"
+	VerbSetBoxVisual    = "set_box_visual"
+	VerbClearBoxVisual  = "clear_box_visual"
+	VerbGetAttributes   = "get_attributes"
+	VerbSetAttributes   = "set_attributes"
 )
 
 // NextBoxResponse is the placement of the box at the current box index

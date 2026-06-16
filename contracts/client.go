@@ -139,3 +139,77 @@ func ClearBoxVisual(ctx context.Context, svc DoCommander, req ClearBoxVisualRequ
 	}
 	return nil
 }
+
+// Client binds a DoCommander (a worldstatestore.Service, or any resource with a
+// DoCommand method) so callers invoke the verbs as methods — client.NextBox(ctx)
+// — instead of threading the service through every call. Resolve the resource in
+// your constructor as usual, then wrap it once with NewClient and store the
+// Client. The package-level functions above stay available for one-off calls.
+type Client struct {
+	svc DoCommander
+}
+
+// NewClient returns a Client bound to svc.
+func NewClient(svc DoCommander) *Client {
+	return &Client{svc: svc}
+}
+
+// NextBox — see the package-level NextBox.
+func (c *Client) NextBox(ctx context.Context) (NextBoxResponse, error) {
+	return NextBox(ctx, c.svc)
+}
+
+// GetStatus — see the package-level GetStatus.
+func (c *Client) GetStatus(ctx context.Context) (StatusResponse, error) {
+	return GetStatus(ctx, c.svc)
+}
+
+// ReportPlacement — see the package-level ReportPlacement.
+func (c *Client) ReportPlacement(ctx context.Context, req ReportPlacementRequest) (ReportPlacementResponse, error) {
+	return ReportPlacement(ctx, c.svc, req)
+}
+
+// ReportSuccess — see the package-level ReportSuccess.
+func (c *Client) ReportSuccess(ctx context.Context) (ReportPlacementResponse, error) {
+	return ReportSuccess(ctx, c.svc)
+}
+
+// ReportFailure — see the package-level ReportFailure.
+func (c *Client) ReportFailure(ctx context.Context, reason string) (ReportPlacementResponse, error) {
+	return ReportFailure(ctx, c.svc, reason)
+}
+
+// GetBoxDims — see the package-level GetBoxDims.
+func (c *Client) GetBoxDims(ctx context.Context) (GetBoxDimsResponse, error) {
+	return GetBoxDims(ctx, c.svc)
+}
+
+// GetPalletHome — see the package-level GetPalletHome.
+func (c *Client) GetPalletHome(ctx context.Context) (GetPalletHomeResponse, error) {
+	return GetPalletHome(ctx, c.svc)
+}
+
+// GetPackOrder — see the package-level GetPackOrder.
+func (c *Client) GetPackOrder(ctx context.Context) (GetPackOrderResponse, error) {
+	return GetPackOrder(ctx, c.svc)
+}
+
+// ResetProgress — see the package-level ResetProgress.
+func (c *Client) ResetProgress(ctx context.Context) error {
+	return ResetProgress(ctx, c.svc)
+}
+
+// SkipBox — see the package-level SkipBox.
+func (c *Client) SkipBox(ctx context.Context, req SkipBoxRequest) error {
+	return SkipBox(ctx, c.svc, req)
+}
+
+// SetBoxVisual — see the package-level SetBoxVisual.
+func (c *Client) SetBoxVisual(ctx context.Context, req SetBoxVisualRequest) (SetBoxVisualResponse, error) {
+	return SetBoxVisual(ctx, c.svc, req)
+}
+
+// ClearBoxVisual — see the package-level ClearBoxVisual.
+func (c *Client) ClearBoxVisual(ctx context.Context, req ClearBoxVisualRequest) error {
+	return ClearBoxVisual(ctx, c.svc, req)
+}

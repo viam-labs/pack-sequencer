@@ -154,3 +154,26 @@ func TestReportSuccessAndFailure(t *testing.T) {
 		t.Errorf("ReportFailure should send success=false, error=boom: %v", body2)
 	}
 }
+
+// TestClientDelegates checks the Client wrapper forwards to the bound svc.
+func TestClientDelegates(t *testing.T) {
+	f := &fakeDoCommander{reply: map[string]interface{}{"seq": 7, "is_complete": false}}
+	c := NewClient(f)
+	resp, err := c.NextBox(context.Background())
+	if err != nil {
+		t.Fatalf("client.NextBox: %v", err)
+	}
+	if _, ok := f.gotCmd[VerbNextBox]; !ok {
+		t.Fatalf("request missing verb %q: %v", VerbNextBox, f.gotCmd)
+	}
+	if resp.Seq != 7 {
+		t.Errorf("decoded wrong via client: %+v", resp)
+	}
+	f.reply = map[string]interface{}{"complete": true}
+	if _, err := c.ReportSuccess(context.Background()); err != nil {
+		t.Fatalf("client.ReportSuccess: %v", err)
+	}
+	if _, ok := f.gotCmd[VerbReportPlacement].(map[string]interface{}); !ok {
+		t.Fatalf("ReportSuccess via client didn't nest under %q: %v", VerbReportPlacement, f.gotCmd)
+	}
+}

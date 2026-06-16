@@ -40,7 +40,7 @@ This is intentional rather than reading the frame system directly — DoCommand 
 | `skip_box` | `{seq, reason?}` | `{skipped, next_box_index, placed, remaining}` | operator UI |
 | `get_attributes` / `set_attributes` | none / partial Config | full Config | operator UI for live edits |
 
-The wire contract is the in-repo nested module `github.com/viam-labs/pack-sequencer/contracts` (stdlib-only — no rdk). The producer here marshals every response through its typed structs (`contracts.MustToMap(contracts.XResponse{...})`); the consumer (palletizer) imports the same module and uses its typed client (`contracts.NextBox(ctx, svc)` etc.). A renamed JSON tag is a compile error on both ends. The flat verb keys above are what those structs serialize to.
+The wire contract is the in-repo nested module `github.com/viam-labs/pack-sequencer/contracts` (stdlib-only — no rdk). The producer here marshals every response through its typed structs (`contracts.MustToMap(contracts.XResponse{...})`); the consumer (palletizer) imports the same module and calls its typed client. Bind the resolved resource once with `contracts.NewClient(svc)` and call the verbs as methods (`client.NextBox(ctx)`), or use the package-level functions for one-off calls (`contracts.NextBox(ctx, svc)`). A renamed JSON tag is a compile error on both ends. The flat verb keys above are what those structs serialize to.
 
 **Verb-rename note (0.4.0):** `get_progress`→`get_status`, `reset_cursor`→`reset_progress`; `next_box` no longer returns progress counters (use `get_status`); `next_seq`→`next_box_index`; `get_status` counters dropped the `_count` suffix. Breaking — ships in lockstep with the palletizer.
 
@@ -49,6 +49,8 @@ The wire contract is the in-repo nested module `github.com/viam-labs/pack-sequen
 **Report helpers (0.4.0-rc2 / contracts v0.3.0):** `report_placement`'s `seq` is now optional — omitted or non-positive means "the box at the cursor" (seqs are 1-based). The contracts client adds `ReportSuccess(ctx, svc)` and `ReportFailure(ctx, svc, reason)` shorthands so a consumer reports the current box without tracking the seq.
 
 **Box-visual rename (0.4.0-rc3 / contracts v0.4.0):** `set_box_transform`→`set_box_visual`, `clear_box_transform`→`clear_box_visual`; contracts `SetBoxTransform*`/`ClearBoxTransform*` → `SetBoxVisual*`/`ClearBoxVisual*`. Same upsert semantics (first publish creates the box, re-publishing the same `seq` moves it) — renamed to match the "visual" vocabulary the consumer/worksheet use (`emit*Visual`, `viz.go`). Breaking — ships in lockstep with the palletizer.
+
+**Client object (contracts v0.5.0):** `contracts.NewClient(svc)` returns a `*Client` that binds the `DoCommander` once, so a consumer calls `client.NextBox(ctx)` instead of threading `svc` through every `contracts.NextBox(ctx, svc)`. Purely additive — the package-level functions are unchanged and the `Client` methods just delegate to them. The name→resource resolution stays in the consumer (rdk-side); the client takes the already-resolved `DoCommander`, so contracts stays stdlib-only (`deps_test.go` still passes).
 
 ## Conventions
 
@@ -107,6 +109,7 @@ Bump `VERSION` first.
 
 - GitHub: [`viam-labs/pack-sequencer`](https://github.com/viam-labs/pack-sequencer)
 - Registry: `viam:pack-sequencer`
+- contracts `contracts/v0.5.0` (additive: `NewClient(svc)` + `*Client` method wrappers; producer unchanged, no module republish needed)
 - Latest published: `0.4.0-rc3` (`set_box_transform`/`clear_box_transform` → `set_box_visual`/`clear_box_visual`; contracts tagged `contracts/v0.4.0`)
 - `0.4.0-rc2` (optional `report_placement` seq + `ReportSuccess`/`ReportFailure` helpers; contracts `contracts/v0.3.0`)
 - `0.4.0-rc1` (symmetric `place_{start,end}_in_{world,pallet}` on `next_box`; contracts tagged `contracts/v0.2.0`)
