@@ -15,7 +15,7 @@ TransformChange stream of placed-box geometries.
 1. **Pack-order computation** — given pallet dimensions (from a sibling `pallet` component), box dimensions, gap, pattern, and layer count, produces the ordered list of slot poses.
 2. **Cursor + placed-set state** — tracks which seq is next and which seqs have been confirmed placed. Survives palletizer restarts.
 3. **WorldStateStore implementation** — `ListUUIDs`, `GetTransform`, `StreamTransformChanges` for the 3D viewer + (future) motion-service consumption.
-4. **Dynamic Transform broker** — accepts `set_box_transform` publishes for in-flight boxes (at pickup, on gripper, at place) and fans them out to subscribers.
+4. **Dynamic Transform broker** — accepts `set_box_visual` publishes for in-flight boxes (at pickup, on gripper, at place) and fans them out to subscribers.
 5. **Pallet/box config aggregator** — single source of truth for box dimensions; the palletizer pulls these at construction.
 
 ## DoCommand surface
@@ -26,7 +26,7 @@ TransformChange stream of placed-box geometries.
 | `get_pack_order` | Return the full enriched placement list (poses in pallet + world frames, approach offsets). |
 | `get_box_dims` / `get_pallet_home` | Single-source-of-truth queries for dimensions + the pre-place transit pose. |
 | `next_box` / `report_placement` / `skip_box` / `reset_cursor` / `get_progress` | Cursor control. |
-| `set_box_transform` / `clear_box_transform` | Dynamic in-flight Transform publish/clear. |
+| `set_box_visual` / `clear_box_visual` | Dynamic in-flight Transform publish/clear. |
 
 ## Build
 

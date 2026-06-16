@@ -193,7 +193,7 @@ func TestVizColorConfigOverride(t *testing.T) {
 
 // parsePoseArgs is the silent-zero fix from the 2026-05-15 dryrun.
 // The dryrun-claude sent {"pose": {x,y,z,...}} (nested) and
-// pack-sequencer 0.2.0 read flat-only — every set_box_transform pose
+// pack-sequencer 0.2.0 read flat-only — every set_box_visual pose
 // landed at world origin instead of the supplied coords.
 
 func TestParsePoseArgs_NestedForm(t *testing.T) {
