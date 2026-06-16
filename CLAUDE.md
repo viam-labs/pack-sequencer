@@ -35,7 +35,7 @@ This is intentional rather than reading the frame system directly — DoCommand 
 | `get_pallet_home` | none | `pallet_home_local` + `pallet_home_world` | palletizer's `resolvePalletHomePose` |
 | `get_pack_order` | none | full placement list + pallet pose/dims | webapp 3D preview, verify_pallet |
 | `get_status` | none | `next_box_index`, done/failed/skipped seqs + bare counts (`placed`/`failed`/`skipped`/`remaining`/`total`) + `complete` | palletizer obstacle cache, webapp polling |
-| `set_box_transform` / `clear_box_transform` | `{seq, ...}` | ack | palletizer's `emitAttachVisual` / `emitDropoffVisual` |
+| `set_box_visual` / `clear_box_visual` | `{seq, ...}` | ack | palletizer's `emitAttachVisual` / `emitDropoffVisual` |
 | `reset_progress` | none | `{reset, next_box_index}` | palletizer's reset path |
 | `skip_box` | `{seq, reason?}` | `{skipped, next_box_index, placed, remaining}` | operator UI |
 | `get_attributes` / `set_attributes` | none / partial Config | full Config | operator UI for live edits |
@@ -48,6 +48,8 @@ The wire contract is the in-repo nested module `github.com/viam-labs/pack-sequen
 
 **Report helpers (0.4.0-rc2 / contracts v0.3.0):** `report_placement`'s `seq` is now optional — omitted or non-positive means "the box at the cursor" (seqs are 1-based). The contracts client adds `ReportSuccess(ctx, svc)` and `ReportFailure(ctx, svc, reason)` shorthands so a consumer reports the current box without tracking the seq.
 
+**Box-visual rename (0.4.0-rc3 / contracts v0.4.0):** `set_box_transform`→`set_box_visual`, `clear_box_transform`→`clear_box_visual`; contracts `SetBoxTransform*`/`ClearBoxTransform*` → `SetBoxVisual*`/`ClearBoxVisual*`. Same upsert semantics (first publish creates the box, re-publishing the same `seq` moves it) — renamed to match the "visual" vocabulary the consumer/worksheet use (`emit*Visual`, `viz.go`). Breaking — ships in lockstep with the palletizer.
+
 ## Conventions
 
 - **Cursor survives reconfigure.** A pallet edit (box dimensions, layer count) cascades through AlwaysRebuild but the cursor preserves through. Only `reset_progress` (or a Config that invalidates the pack order) clears it.
@@ -55,7 +57,7 @@ The wire contract is the in-repo nested module `github.com/viam-labs/pack-sequen
 - **Pallet pose + dims are live-fetched per call, not cached.** Lets operators update pallet `set_dimensions` / drag the pallet without a pack-sequencer bounce. `palletInfo()` does the DoCommand; callers MUST invoke it before locking p.mu (the DoCommand round-trips through gRPC and can't hold our mutex). See doNextBox / doReportPlacement / GetTransform call patterns.
 - **Strict attribute validation at construction.** `rejectUnknownAttributes` round-trips the raw attribute map through `json.DisallowUnknownFields` so typos like `box_width` (vs `box_width_mm`) error at config-load instead of silently becoming 0 and reporting `is_complete=true` on cycle 1.
 - **Default box color is cardboard brown** (`#b08850`, see `defaultBoxColor`). The WSS renderer's default is red — without the default, placed boxes and in-flight box transforms render red. Override via `box_color: {r, g, b, opacity?}` in Config.
-- **Inline emit of WorldStateStore changes.** `set_box_transform` / `clear_box_transform` / `report_placement` push to a buffered `changeChan` so the 3D scene reflects state immediately. Buffer cap 128; overflow logs at warn.
+- **Inline emit of WorldStateStore changes.** `set_box_visual` / `clear_box_visual` / `report_placement` push to a buffered `changeChan` so the 3D scene reflects state immediately. Buffer cap 128; overflow logs at warn.
 
 ## Dependencies
 
@@ -105,6 +107,8 @@ Bump `VERSION` first.
 
 - GitHub: [`viam-labs/pack-sequencer`](https://github.com/viam-labs/pack-sequencer)
 - Registry: `viam:pack-sequencer`
-- Latest published: `0.4.0-rc1` (symmetric `place_{start,end}_in_{world,pallet}` on `next_box`; contracts tagged `contracts/v0.2.0`)
+- Latest published: `0.4.0-rc3` (`set_box_transform`/`clear_box_transform` → `set_box_visual`/`clear_box_visual`; contracts tagged `contracts/v0.4.0`)
+- `0.4.0-rc2` (optional `report_placement` seq + `ReportSuccess`/`ReportFailure` helpers; contracts `contracts/v0.3.0`)
+- `0.4.0-rc1` (symmetric `place_{start,end}_in_{world,pallet}` on `next_box`; contracts tagged `contracts/v0.2.0`)
 - `0.4.0-rc0` (in-repo `contracts` nested module + producer marshals through it; `next_box` drops counters; `get_progress`→`get_status`, `reset_cursor`→`reset_progress`, `next_seq`→`next_box_index`. Contracts `contracts/v0.1.0`.)
 - Prior: `0.3.0` (`set_box_transform` honors user-supplied pose [nested or flat]; per-call color override; viamkit v0.11.0)

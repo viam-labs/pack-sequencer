@@ -260,7 +260,7 @@ type palletSequencer struct {
 	// rendering derived from the pack order.
 	//
 	// Each dynamic transform gets a fresh, versioned UUID
-	// ("box-<seq>-v<N>") on every set_box_transform call, because the
+	// ("box-<seq>-v<N>") on every set_box_visual call, because the
 	// Viam 3D scene's stream handler ignores ADDED events for UUIDs it
 	// already knows — and dropping the box via REMOVED then re-adding
 	// the same UUID doesn't bring it back. A brand-new UUID sidesteps
@@ -407,13 +407,13 @@ func asFloat(v interface{}) float64 {
 }
 
 // parsePoseArgs extracts a flat (x, y, z, o_x, o_y, o_z, theta) tuple
-// from either calling convention used by `set_box_transform`:
+// from either calling convention used by `set_box_visual`:
 //
 //   - nested under "pose": {"pose": {"x": ..., "y": ..., ...}}
 //   - flat at args level: {"x": ..., "y": ..., ...}
 //
 // Nested wins when both shapes are present. Missing fields decode to
-// zero — caller decides what to do with them (set_box_transform
+// zero — caller decides what to do with them (set_box_visual
 // defaults oz=1 if all OV components are zero).
 func parsePoseArgs(args map[string]interface{}) (x, y, z, ox, oy, oz, theta float64) {
 	src := args
@@ -432,7 +432,7 @@ func parsePoseArgs(args map[string]interface{}) (x, y, z, ox, oy, oz, theta floa
 
 // parseColorArg pulls an RGB+opacity color from a map. Out-of-range
 // channels (clamped to 0..255) and out-of-range opacity (0..1) silently
-// fall back to the supplied default — set_box_transform shouldn't fail
+// fall back to the supplied default — set_box_visual shouldn't fail
 // just because someone typo'd a color value.
 func parseColorArg(m map[string]interface{}, fallback viz.Color) viz.Color {
 	r := int(asFloat(m["r"]))
@@ -730,8 +730,8 @@ const (
 
 // cmdHandler is the signature every DoCommand verb implements. Each
 // handler receives the full cmd map so verbs that take a value
-// (set_attributes, report_placement, skip_box, set_box_transform,
-// clear_box_transform) can pull their own argument.
+// (set_attributes, report_placement, skip_box, set_box_visual,
+// clear_box_visual) can pull their own argument.
 type cmdHandler func(p *palletSequencer, cmd map[string]interface{}) (map[string]interface{}, error)
 
 // cmdHandlers is the canonical inventory of supported DoCommand verbs.
@@ -794,11 +794,11 @@ var cmdHandlers = []struct {
 	{"get_status", func(p *palletSequencer, _ map[string]interface{}) (map[string]interface{}, error) {
 		return p.doGetStatus(), nil
 	}},
-	{"set_box_transform", func(p *palletSequencer, cmd map[string]interface{}) (map[string]interface{}, error) {
-		return p.doSetBoxTransform(cmd["set_box_transform"])
+	{"set_box_visual", func(p *palletSequencer, cmd map[string]interface{}) (map[string]interface{}, error) {
+		return p.doSetBoxVisual(cmd["set_box_visual"])
 	}},
-	{"clear_box_transform", func(p *palletSequencer, cmd map[string]interface{}) (map[string]interface{}, error) {
-		return p.doClearBoxTransform(cmd["clear_box_transform"])
+	{"clear_box_visual", func(p *palletSequencer, cmd map[string]interface{}) (map[string]interface{}, error) {
+		return p.doClearBoxVisual(cmd["clear_box_visual"])
 	}},
 }
 
@@ -896,7 +896,7 @@ func (p *palletSequencer) doGetPackOrder() map[string]interface{} {
 // doResetProgress zeroes the placement cursor + dynamic-transform map
 // and emits REMOVED events for every UUID the renderer might have
 // cached (both confirmed-placed seqs and in-flight dynamic transforms).
-// dynamicVersion is intentionally NOT reset so future set_box_transform
+// dynamicVersion is intentionally NOT reset so future set_box_visual
 // calls mint UUIDs that differ from any prior ones the renderer
 // remembers.
 func (p *palletSequencer) doResetProgress() (map[string]interface{}, error) {
@@ -928,7 +928,7 @@ func (p *palletSequencer) doResetProgress() (map[string]interface{}, error) {
 	return contracts.MustToMap(contracts.ResetProgressResponse{Reset: true, NextBoxIndex: 1}), nil
 }
 
-// doSetBoxTransform inserts or updates a caller-supplied Transform for
+// doSetBoxVisual inserts or updates a caller-supplied Transform for
 // one box seq. Used to render a box at the pickup location, attach it
 // to the gripper during transit, etc. The seq doesn't need to be in the
 // cursor yet — anything the palletizer wants to visualize.
@@ -937,7 +937,7 @@ func (p *palletSequencer) doResetProgress() (map[string]interface{}, error) {
 // been silently dropped pre-0.3.0):
 //
 //	# Nested (preferred — matches every other arg-bearing verb):
-//	{"set_box_transform": {
+//	{"set_box_visual": {
 //	    "seq":    7,
 //	    "parent": "gripper",                 // any frame name; observer_frame by default
 //	    "pose":   {"x": 0, "y": 0, "z": 30,
@@ -946,7 +946,7 @@ func (p *palletSequencer) doResetProgress() (map[string]interface{}, error) {
 //	}}
 //
 //	# Flat (legacy form for back-compat):
-//	{"set_box_transform": {
+//	{"set_box_visual": {
 //	    "seq":    7,
 //	    "parent": "gripper",
 //	    "x": 0, "y": 0, "z": 30,
@@ -961,14 +961,14 @@ func (p *palletSequencer) doResetProgress() (map[string]interface{}, error) {
 // Box dimensions come from cfg.box_*_mm; box color from the optional
 // per-call override or, failing that, from cfg.box_color (defaults to
 // cardboard brown — see defaultBoxColor).
-func (p *palletSequencer) doSetBoxTransform(raw interface{}) (map[string]interface{}, error) {
+func (p *palletSequencer) doSetBoxVisual(raw interface{}) (map[string]interface{}, error) {
 	args, ok := raw.(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("set_box_transform: expected object, got %T", raw)
+		return nil, fmt.Errorf("set_box_visual: expected object, got %T", raw)
 	}
 	seqF, ok := args["seq"].(float64)
 	if !ok {
-		return nil, fmt.Errorf("set_box_transform: missing or non-numeric 'seq'")
+		return nil, fmt.Errorf("set_box_visual: missing or non-numeric 'seq'")
 	}
 	seq := int(seqF)
 	parent, _ := args["parent"].(string)
@@ -1019,18 +1019,18 @@ func (p *palletSequencer) doSetBoxTransform(raw interface{}) (map[string]interfa
 	return map[string]interface{}{"acknowledged": true, "seq": seq, "uuid": uuid, "parent": parent}, nil
 }
 
-// doClearBoxTransform removes a dynamic Transform for one seq. If the
+// doClearBoxVisual removes a dynamic Transform for one seq. If the
 // seq is also a successful placement, the canonical world-pose-on-pallet
 // rendering takes over and we emit UPDATED. Otherwise it disappears
 // (REMOVED).
-func (p *palletSequencer) doClearBoxTransform(raw interface{}) (map[string]interface{}, error) {
+func (p *palletSequencer) doClearBoxVisual(raw interface{}) (map[string]interface{}, error) {
 	args, ok := raw.(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("clear_box_transform: expected object, got %T", raw)
+		return nil, fmt.Errorf("clear_box_visual: expected object, got %T", raw)
 	}
 	seqF, ok := args["seq"].(float64)
 	if !ok {
-		return nil, fmt.Errorf("clear_box_transform: missing or non-numeric 'seq'")
+		return nil, fmt.Errorf("clear_box_visual: missing or non-numeric 'seq'")
 	}
 	seq := int(seqF)
 

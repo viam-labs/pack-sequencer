@@ -115,27 +115,27 @@ func SkipBox(ctx context.Context, svc DoCommander, req SkipBoxRequest) error {
 	return nil
 }
 
-// SetBoxTransform adds or moves a named box transform in the 3D scene.
-func SetBoxTransform(ctx context.Context, svc DoCommander, req SetBoxTransformRequest) (SetBoxTransformResponse, error) {
+// SetBoxVisual adds or moves a named box visual in the 3D scene.
+func SetBoxVisual(ctx context.Context, svc DoCommander, req SetBoxVisualRequest) (SetBoxVisualResponse, error) {
 	body, err := ToMap(req)
 	if err != nil {
-		return SetBoxTransformResponse{}, fmt.Errorf("set_box_transform encode: %w", err)
+		return SetBoxVisualResponse{}, fmt.Errorf("set_box_visual encode: %w", err)
 	}
-	m, err := svc.DoCommand(ctx, map[string]interface{}{VerbSetBoxTransform: body})
+	m, err := svc.DoCommand(ctx, map[string]interface{}{VerbSetBoxVisual: body})
 	if err != nil {
-		return SetBoxTransformResponse{}, fmt.Errorf("set_box_transform: %w", err)
+		return SetBoxVisualResponse{}, fmt.Errorf("set_box_visual: %w", err)
 	}
-	return FromMap[SetBoxTransformResponse](m)
+	return FromMap[SetBoxVisualResponse](m)
 }
 
-// ClearBoxTransform removes a named box transform from the 3D scene.
-func ClearBoxTransform(ctx context.Context, svc DoCommander, req ClearBoxTransformRequest) error {
+// ClearBoxVisual removes a named box visual from the 3D scene.
+func ClearBoxVisual(ctx context.Context, svc DoCommander, req ClearBoxVisualRequest) error {
 	body, err := ToMap(req)
 	if err != nil {
-		return fmt.Errorf("clear_box_transform encode: %w", err)
+		return fmt.Errorf("clear_box_visual encode: %w", err)
 	}
-	if _, err := svc.DoCommand(ctx, map[string]interface{}{VerbClearBoxTransform: body}); err != nil {
-		return fmt.Errorf("clear_box_transform: %w", err)
+	if _, err := svc.DoCommand(ctx, map[string]interface{}{VerbClearBoxVisual: body}); err != nil {
+		return fmt.Errorf("clear_box_visual: %w", err)
 	}
 	return nil
 }

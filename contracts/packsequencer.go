@@ -12,8 +12,8 @@ const (
 	VerbGetStatus         = "get_status"
 	VerbResetProgress     = "reset_progress"
 	VerbSkipBox           = "skip_box"
-	VerbSetBoxTransform   = "set_box_transform"
-	VerbClearBoxTransform = "clear_box_transform"
+	VerbSetBoxVisual   = "set_box_visual"
+	VerbClearBoxVisual = "clear_box_visual"
 	VerbGetAttributes     = "get_attributes"
 	VerbSetAttributes     = "set_attributes"
 )
@@ -120,28 +120,28 @@ type GetPalletHomeResponse struct {
 	PalletHomeWorld Pose6D `json:"pallet_home_world"`
 }
 
-// SetBoxTransformRequest adds or moves a named box transform in the 3D
+// SetBoxVisualRequest adds or moves a named box visual in the 3D
 // scene (a held box following the gripper, a dropoff preview, …).
 // Color is an optional per-call override of the service's box_color
 // Config attr; a nil Color uses the service default.
-type SetBoxTransformRequest struct {
+type SetBoxVisualRequest struct {
 	Seq    int    `json:"seq"`
 	Parent string `json:"parent,omitempty"`
 	Pose   Pose6D `json:"pose,omitempty"`
 	Color  *Color `json:"color,omitempty"`
 }
 
-// SetBoxTransformResponse is the ack returned after set_box_transform.
-type SetBoxTransformResponse struct {
+// SetBoxVisualResponse is the ack returned after set_box_visual.
+type SetBoxVisualResponse struct {
 	Acknowledged bool   `json:"acknowledged"`
 	Seq          int    `json:"seq"`
 	UUID         string `json:"uuid"`
 	Parent       string `json:"parent,omitempty"`
 }
 
-// ClearBoxTransformRequest removes a named box transform from the 3D
+// ClearBoxVisualRequest removes a named box visual from the 3D
 // scene.
-type ClearBoxTransformRequest struct {
+type ClearBoxVisualRequest struct {
 	Seq int `json:"seq"`
 }
 
