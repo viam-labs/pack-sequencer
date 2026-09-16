@@ -450,6 +450,10 @@ func parseColorArg(m map[string]interface{}, fallback viz.Color) viz.Color {
 
 func (p *palletSequencer) Name() resource.Name { return p.name }
 
+func (p *palletSequencer) Status(_ context.Context) (map[string]interface{}, error) {
+	return map[string]interface{}{}, nil
+}
+
 // Placement describes one box slot in the computed pack order.
 type Placement struct {
 	Seq    int     `json:"seq"`
