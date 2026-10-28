@@ -23,11 +23,11 @@ import (
 	"sort"
 	"sync"
 
-	commonpb "go.viam.com/api/common/v1"
-	wsspb "go.viam.com/api/service/worldstatestore/v1"
 	"github.com/golang/geo/r3"
 	wcsh "github.com/viam-labs/viamkit/geom"
 	"github.com/viam-labs/viamkit/viz"
+	commonpb "go.viam.com/api/common/v1"
+	wsspb "go.viam.com/api/service/worldstatestore/v1"
 	"go.viam.com/rdk/components/generic"
 	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/resource"
@@ -122,7 +122,7 @@ type Config struct {
 	// to slide against an already-placed neighbor on either axis.
 	PlaceApproachAngleYDeg float64 `json:"place_approach_angle_y_deg,omitempty"`
 	PlaceApproachHeightMM  float64 `json:"place_approach_height_mm,omitempty"` // default 100
-	PlaceOrientation      *Pose6D `json:"place_orientation,omitempty"`         // orientation part only; default (0,0,-1,0)
+	PlaceOrientation       *Pose6D `json:"place_orientation,omitempty"`        // orientation part only; default (0,0,-1,0)
 
 	// PalletHome is the arm's pre-place transit waypoint, expressed in
 	// pallet-local coordinates (mm + degrees). Theta rotates the gripper
@@ -450,6 +450,10 @@ func parseColorArg(m map[string]interface{}, fallback viz.Color) viz.Color {
 
 func (p *palletSequencer) Name() resource.Name { return p.name }
 
+func (p *palletSequencer) Status(_ context.Context) (map[string]interface{}, error) {
+	return map[string]interface{}{}, nil
+}
+
 // Placement describes one box slot in the computed pack order.
 type Placement struct {
 	Seq    int     `json:"seq"`
@@ -703,6 +707,7 @@ func (p *palletSequencer) apply(attrs map[string]interface{}) (Config, error) {
 //	{"get_progress": true}                        → {next_seq, done_seqs, skipped_seqs,
 //	                                                 failed_seqs, placed_count, failed_count,
 //	                                                 skipped_count, total, complete}
+//
 // Defaults applied when the operator hasn't set explicit values in the
 // pack-sequencer service attributes. Named so doGetPackOrder reads
 // top-down without buried magic numbers.
@@ -1603,4 +1608,3 @@ func (p *palletSequencer) emit(c worldstatestore.TransformChange) {
 		p.logger.Warnw("change channel full, dropping event", "uuid", string(c.Transform.GetUuid()))
 	}
 }
-
