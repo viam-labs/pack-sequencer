@@ -214,9 +214,9 @@ func TestParsePoseArgs_NestedForm(t *testing.T) {
 
 func TestParsePoseArgs_FlatForm(t *testing.T) {
 	args := map[string]interface{}{
-		"seq":    1.0,
-		"x":      111.0, "y": 222.0, "z": 333.0,
-		"o_z":   -1.0, "theta": 45.0,
+		"seq": 1.0,
+		"x":   111.0, "y": 222.0, "z": 333.0,
+		"o_z": -1.0, "theta": 45.0,
 	}
 	x, y, z, _, _, oz, theta := parsePoseArgs(args)
 	if x != 111 || y != 222 || z != 333 || oz != -1 || theta != 45 {
